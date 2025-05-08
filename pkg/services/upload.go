@@ -147,6 +147,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		index       int
 		channelUser string
 		out         api.UploadPart
+		uploaded    int64
 	)
 
 	if params.Encrypted.Value && a.cnf.TG.Uploads.EncryptionKey == "" {
@@ -302,7 +303,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 			}
 
 			// Get a dedicated client for this upload with reconnection
-			var uploadClient *telegram.Client
+			var uploadClient *tg.Client
 			for retries := 0; retries < 3; retries++ {
 				uploadClient = uploadPool.Default(ctx)
 				if uploadClient != nil {
@@ -323,7 +324,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 				zap.Int("partSize", partSize),
 				zap.Int64("fileSize", fileSize))
 
-			u := uploader.NewUploader(uploadClient).
+			u := uploader.NewUploader(client).
 				WithThreads(a.cnf.TG.Uploads.Threads).
 				WithPartSize(partSize)
 
@@ -368,7 +369,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		}
 
 		// Update progress after upload completes
-		uploaded = fileSize
+		atomic.StoreInt64(&uploaded, fileSize)
 		progress := float64(uploaded) / float64(fileSize) * 100
 		progressMsg := fmt.Sprintf("⏳ Uploading part %d of %s... %.1f%%", 
 			params.PartNo, params.FileName, progress)
@@ -379,7 +380,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		logger.Info("File uploaded successfully, sending to channel")
 
 		document := message.UploadedDocument(upload).Filename(params.PartName).ForceFile(true)
-		sender := message.NewSender(uploadClient)
+		sender := message.NewSender(client)
 		target := sender.To(&tg.InputPeerChannel{
 			ChannelID:  channel.ChannelID,
 			AccessHash: channel.AccessHash,
@@ -466,7 +467,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 			return err
 		}
 
-		v, err := uploadClient.ChannelsGetMessages(ctx, &tg.ChannelsGetMessagesRequest{
+		v, err := client.ChannelsGetMessages(ctx, &tg.ChannelsGetMessagesRequest{
 			Channel: channel,
 			ID:      []tg.InputMessageClass{&tg.InputMessageID{ID: message.ID}},
 		})
@@ -485,7 +486,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 				return ErrUploadFailed
 			}
 			if doc.Size != fileSize {
-				uploadClient.ChannelsDeleteMessages(ctx, &tg.ChannelsDeleteMessagesRequest{
+				client.ChannelsDeleteMessages(ctx, &tg.ChannelsDeleteMessagesRequest{
 					Channel: channel,
 					ID:      []int{message.ID},
 				})
