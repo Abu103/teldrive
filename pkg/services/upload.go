@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/Abu103/teldrive/internal/api"
@@ -224,7 +225,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 
 		// Update progress periodically
 		go func() {
-			ticker := time.NewTicker(5 * time.Second)
+			ticker := time.NewTicker(2 * time.Second)
 			defer ticker.Stop()
 
 			for {
@@ -247,7 +248,18 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		}()
 
 		logger.Info("Starting file upload")
-		upload, err := u.Upload(ctx, uploader.NewUpload(params.PartName, fileStream, fileSize))
+		upload, err := u.Upload(ctx, uploader.NewUpload(params.PartName, fileStream, fileSize, func(bytes int64) {
+			atomic.StoreInt64(&uploaded, bytes)
+		}))
+
+		// Update progress after upload completes
+		uploaded = fileSize
+		progress := float64(uploaded) / float64(total) * 100
+		progressMsg := fmt.Sprintf("⏳ Uploading part %d of %s... %.1f%%", 
+			params.PartNo, params.FileName, progress)
+		if _, err := tgc.SendStatusMessage(ctx, apiClient, channelId, progressMsg); err != nil {
+			logger.Warn("Failed to update final progress message", zap.Error(err))
+		}
 
 		// Delete status message after upload completes or fails
 		if statusMsgId != 0 {
