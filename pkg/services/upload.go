@@ -158,7 +158,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 
 	err = tgc.RunWithAuth(ctx, client, token, func(ctx context.Context) error {
 
-		channel, err := tgc.GetChannelById(ctx, client.API(), channelId)
+		channel, err := tgc.GetChannelById(ctx, client, channelId)
 
 		if err != nil {
 			logger.Error("Failed to get channel", zap.Error(err))
@@ -169,7 +169,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 
 		// Send initial status message
 		statusMsg := fmt.Sprintf("⏳ Uploading part %d of %s...", params.PartNo, params.FileName)
-		statusMsgId, err := tgc.SendStatusMessage(ctx, client.API(), channelId, statusMsg)
+		statusMsgId, err := tgc.SendStatusMessage(ctx, client, channelId, statusMsg)
 		if err != nil {
 			logger.Warn("Failed to send status message", zap.Error(err))
 			// Don't return error, continue with upload
@@ -232,7 +232,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 						progress := float64(uploaded) / float64(total) * 100
 						progressMsg := fmt.Sprintf("⏳ Uploading part %d of %s... %.1f%%", 
 							params.PartNo, params.FileName, progress)
-						if _, err := tgc.SendStatusMessage(ctx, client.API(), channelId, progressMsg); err != nil {
+						if _, err := tgc.SendStatusMessage(ctx, client, channelId, progressMsg); err != nil {
 							logger.Warn("Failed to update progress message", zap.Error(err))
 						} else {
 							logger.Debug("Updated progress", zap.Float64("progress", progress))
