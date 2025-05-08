@@ -158,7 +158,10 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 
 	err = tgc.RunWithAuth(ctx, client, token, func(ctx context.Context) error {
 
-		channel, err := tgc.GetChannelById(ctx, client.API(), channelId)
+		// Get the API client once at the start
+		apiClient := client.API()
+
+		channel, err := tgc.GetChannelById(ctx, apiClient, channelId)
 
 		if err != nil {
 			logger.Error("Failed to get channel", zap.Error(err))
@@ -169,7 +172,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 
 		// Send initial status message
 		statusMsg := fmt.Sprintf("⏳ Uploading part %d of %s...", params.PartNo, params.FileName)
-		statusMsgId, err := tgc.SendStatusMessage(ctx, client.API(), channelId, statusMsg)
+		statusMsgId, err := tgc.SendStatusMessage(ctx, apiClient, channelId, statusMsg)
 		if err != nil {
 			logger.Warn("Failed to send status message", zap.Error(err))
 			// Don't return error, continue with upload
@@ -217,9 +220,6 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		// Create a context for progress updates
 		progressCtx, progressCancel := context.WithCancel(ctx)
 		defer progressCancel()
-
-		// Store the API client for progress updates
-		apiClient := client.API()
 
 		// Update progress periodically
 		go func() {
