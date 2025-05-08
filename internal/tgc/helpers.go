@@ -256,7 +256,7 @@ func SendStatusMessage(ctx context.Context, client *tg.Client, channelId int64, 
 		}
 
 		result, err := client.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
-			Peer:    channel,
+			Peer:    &tg.InputPeerChannel{ChannelID: channel.ChannelID, AccessHash: channel.AccessHash},
 			Message: message,
 		})
 		if err == nil {
@@ -311,7 +311,7 @@ func UpdateStatusMessage(ctx context.Context, client *tg.Client, channelId int64
 		}
 
 		_, err := client.MessagesEditMessage(ctx, &tg.MessagesEditMessageRequest{
-			Peer:    channel,
+			Peer:    &tg.InputPeerChannel{ChannelID: channel.ChannelID, AccessHash: channel.AccessHash},
 			ID:      messageId,
 			Message: message,
 		})
