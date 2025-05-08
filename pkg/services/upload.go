@@ -218,6 +218,9 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		progressCtx, progressCancel := context.WithCancel(ctx)
 		defer progressCancel()
 
+		// Store the API client for progress updates
+		apiClient := client.API()
+
 		// Update progress periodically
 		go func() {
 			ticker := time.NewTicker(5 * time.Second)
@@ -232,7 +235,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 						progress := float64(uploaded) / float64(total) * 100
 						progressMsg := fmt.Sprintf("⏳ Uploading part %d of %s... %.1f%%", 
 							params.PartNo, params.FileName, progress)
-						if _, err := tgc.SendStatusMessage(ctx, client.API(), channelId, progressMsg); err != nil {
+						if _, err := tgc.SendStatusMessage(ctx, apiClient, channelId, progressMsg); err != nil {
 							logger.Warn("Failed to update progress message", zap.Error(err))
 						} else {
 							logger.Debug("Updated progress", zap.Float64("progress", progress))
