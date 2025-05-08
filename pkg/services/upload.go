@@ -147,22 +147,25 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 
 	logger := logging.FromContext(ctx)
 
-	logger.Debug("uploading chunk",
+	logger.Info("Starting upload process",
 		zap.String("fileName", params.FileName),
 		zap.String("partName", params.PartName),
 		zap.String("bot", channelUser),
 		zap.Int("botNo", index),
 		zap.Int("chunkNo", params.PartNo),
-		zap.Int64("partSize", fileSize),
-	)
+		zap.Int64("fileSize", fileSize),
+		zap.Int64("partSize", int64(2 * 1024 * 1024)))
 
 	err = tgc.RunWithAuth(ctx, client, token, func(ctx context.Context) error {
 
 		channel, err := tgc.GetChannelById(ctx, client.API(), channelId)
 
 		if err != nil {
+			logger.Error("Failed to get channel", zap.Error(err))
 			return err
 		}
+
+		logger.Info("Got channel successfully", zap.Int64("channelId", channelId))
 
 		// Send initial status message
 		statusMsg := fmt.Sprintf("⏳ Uploading part %d of %s...", params.PartNo, params.FileName)
@@ -170,21 +173,27 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		if err != nil {
 			logger.Warn("Failed to send status message", zap.Error(err))
 			// Don't return error, continue with upload
+		} else {
+			logger.Info("Sent initial status message", zap.Int("messageId", statusMsgId))
 		}
 
 		var salt string
 
 		if params.Encrypted.Value {
+			logger.Info("Encrypting file")
 			salt, _ = generateRandomSalt()
 			cipher, err := crypt.NewCipher(a.cnf.TG.Uploads.EncryptionKey, salt)
 			if err != nil {
+				logger.Error("Failed to create cipher", zap.Error(err))
 				return err
 			}
 			fileSize = crypt.EncryptedSize(fileSize)
 			fileStream, err = cipher.EncryptData(fileStream)
 			if err != nil {
+				logger.Error("Failed to encrypt data", zap.Error(err))
 				return err
 			}
+			logger.Info("File encrypted successfully")
 		}
 
 		client := uploadPool.Default(ctx)
@@ -192,6 +201,10 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		// Set part size to 2MB (2 * 1024 * 1024) for all files
 		// This is the minimum size required by Telegram's API
 		partSize := 2 * 1024 * 1024 // 2MB
+
+		logger.Info("Creating uploader", 
+			zap.Int("threads", a.cnf.TG.Uploads.Threads),
+			zap.Int("partSize", partSize))
 
 		u := uploader.NewUploader(client).
 			WithThreads(a.cnf.TG.Uploads.Threads).
@@ -219,14 +232,17 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 						progress := float64(uploaded) / float64(total) * 100
 						progressMsg := fmt.Sprintf("⏳ Uploading part %d of %s... %.1f%%", 
 							params.PartNo, params.FileName, progress)
-						if _, err := tgc.SendStatusMessage(ctx, client, channelId, progressMsg); err != nil {
+						if _, err := tgc.SendStatusMessage(ctx, client.API(), channelId, progressMsg); err != nil {
 							logger.Warn("Failed to update progress message", zap.Error(err))
+						} else {
+							logger.Debug("Updated progress", zap.Float64("progress", progress))
 						}
 					}
 				}
 			}
 		}()
 
+		logger.Info("Starting file upload")
 		upload, err := u.Upload(ctx, uploader.NewUpload(params.PartName, fileStream, fileSize))
 
 		// Delete status message after upload completes or fails
@@ -234,18 +250,22 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 			defer func() {
 				if err := tgc.DeleteStatusMessage(ctx, client, channelId, statusMsgId); err != nil {
 					logger.Warn("Failed to delete status message", zap.Error(err))
+				} else {
+					logger.Info("Deleted status message")
 				}
 			}()
 		}
 
 		if err != nil {
-			logger.Error("upload failed", 
+			logger.Error("Upload failed", 
 				zap.String("fileName", params.FileName),
 				zap.String("partName", params.PartName),
 				zap.Int("chunkNo", params.PartNo),
 				zap.Error(err))
 			return err
 		}
+
+		logger.Info("File uploaded successfully, sending to channel")
 
 		document := message.UploadedDocument(upload).Filename(params.PartName).ForceFile(true)
 
@@ -257,8 +277,11 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		res, err := target.Media(ctx, document)
 
 		if err != nil {
+			logger.Error("Failed to send media to channel", zap.Error(err))
 			return err
 		}
+
+		logger.Info("Media sent to channel successfully")
 
 		updates := res.(*tg.Updates)
 
