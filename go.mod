@@ -3,6 +3,7 @@ module github.com/tgdrive/teldrive
 go 1.24
 
 require (
+	github.com/Abu103/teldrive v0.0.0-20250508081836-1b52060fe888
 	github.com/Masterminds/semver/v3 v3.3.1
 	github.com/WinterYukky/gorm-extra-clause-plugin v0.3.1
 	github.com/coocood/freecache v1.2.4
@@ -53,7 +54,6 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
-	github.com/mattn/go-sqlite3 v1.14.27 // indirect
 	github.com/mfridman/interpolate v0.0.2 // indirect
 	github.com/ncruces/go-strftime v0.1.9 // indirect
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
