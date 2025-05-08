@@ -114,6 +114,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		channelId = params.ChannelId.Value
 	}
 
+	logger := logging.FromContext(ctx)
 	logger.Info("Using channel ID", 
 		zap.Int64("channelId", channelId),
 		zap.Bool("isDefault", params.ChannelId.Value == 0))
@@ -150,8 +151,6 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 	uploadPool := pool.NewPool(client, int64(a.cnf.TG.PoolSize), middlewares...)
 
 	defer uploadPool.Close()
-
-	logger := logging.FromContext(ctx)
 
 	logger.Info("Starting upload process",
 		zap.String("fileName", params.FileName),
@@ -245,7 +244,8 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 						progress := float64(uploaded) / float64(total) * 100
 						progressMsg := fmt.Sprintf("⏳ Uploading part %d of %s... %.1f%%", 
 							params.PartNo, params.FileName, progress)
-						if _, err := tgc.SendStatusMessage(ctx, apiClient, channelId, progressMsg); err != nil {
+						// Update existing message instead of sending new one
+						if err := tgc.UpdateStatusMessage(ctx, apiClient, channelId, statusMsgId, progressMsg); err != nil {
 							logger.Warn("Failed to update progress message", zap.Error(err))
 						} else {
 							logger.Debug("Updated progress", zap.Float64("progress", progress))
@@ -280,7 +280,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		progress := float64(uploaded) / float64(total) * 100
 		progressMsg := fmt.Sprintf("⏳ Uploading part %d of %s... %.1f%%", 
 			params.PartNo, params.FileName, progress)
-		if _, err := tgc.SendStatusMessage(ctx, apiClient, channelId, progressMsg); err != nil {
+		if err := tgc.UpdateStatusMessage(ctx, apiClient, channelId, statusMsgId, progressMsg); err != nil {
 			logger.Warn("Failed to update final progress message", zap.Error(err))
 		}
 
