@@ -406,7 +406,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 	}
 
 	// Process the response
-	updates, ok := res.(tg.Updates)
+	updates, ok := res.(*tg.Updates)
 	if !ok {
 		return nil, fmt.Errorf("unexpected response type: %T", res)
 	}
