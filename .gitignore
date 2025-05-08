@@ -30,8 +30,8 @@ sslcerts
 *.db
 logs
 bin
-ui/dist
-docs/dist
+# ui/dist
+# docs/dist
 teldrive-ui.zip
-internal/api
+# internal/api
 .aider*
