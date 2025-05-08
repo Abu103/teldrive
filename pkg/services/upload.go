@@ -226,8 +226,8 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		var uploaded int64
 		total := fileSize
 
-		// Create an independent context for this upload
-		uploadCtx, uploadCancel := context.WithCancel(context.Background())
+		// Create an independent context for this upload with a longer timeout
+		uploadCtx, uploadCancel := context.WithTimeout(context.Background(), 30*time.Minute)
 		defer uploadCancel()
 
 		// Create a progress reader
@@ -265,20 +265,57 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 
 		logger.Info("Starting file upload")
 		
-		upload, err := u.Upload(uploadCtx, uploader.NewUpload(params.PartName, progressReader, fileSize))
-		if err != nil {
-			logger.Error("Upload failed", 
+		// Add retry logic for the upload
+		var upload *tg.InputFile
+		var uploadErr error
+		maxRetries := 3
+		for retry := 0; retry < maxRetries; retry++ {
+			if retry > 0 {
+				logger.Info("Retrying upload", 
+					zap.String("fileName", params.FileName),
+					zap.String("partName", params.PartName),
+					zap.Int("chunkNo", params.PartNo),
+					zap.Int("retry", retry))
+				// Reset the progress reader for retry
+				progressReader = &progressReader{
+					reader:   fileStream,
+					progress: func(bytes int64) {
+						atomic.StoreInt64(&uploaded, bytes)
+					},
+				}
+			}
+
+			upload, uploadErr = u.Upload(uploadCtx, uploader.NewUpload(params.PartName, progressReader, fileSize))
+			if uploadErr == nil {
+				break
+			}
+
+			logger.Error("Upload attempt failed", 
 				zap.String("fileName", params.FileName),
 				zap.String("partName", params.PartName),
 				zap.Int("chunkNo", params.PartNo),
-				zap.Error(err))
+				zap.Int("retry", retry),
+				zap.Error(uploadErr))
+
+			if retry < maxRetries-1 {
+				// Wait before retrying
+				time.Sleep(time.Duration(retry+1) * 5 * time.Second)
+			}
+		}
+
+		if uploadErr != nil {
+			logger.Error("All upload attempts failed", 
+				zap.String("fileName", params.FileName),
+				zap.String("partName", params.PartName),
+				zap.Int("chunkNo", params.PartNo),
+				zap.Error(uploadErr))
 			// Delete status message on failure
 			if statusMsgId != 0 {
 				if delErr := tgc.DeleteStatusMessage(ctx, apiClient, channelId, statusMsgId); delErr != nil {
 					logger.Warn("Failed to delete status message after error", zap.Error(delErr))
 				}
 			}
-			return err
+			return uploadErr
 		}
 
 		// Update progress after upload completes
@@ -299,21 +336,52 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 			AccessHash: channel.AccessHash,
 		})
 
-		res, err := target.Media(ctx, document)
-		if err != nil {
-			logger.Error("Failed to send media to channel", zap.Error(err))
+		// Add retry logic for sending to channel
+		var res tg.UpdatesClass
+		var sendErr error
+		for retry := 0; retry < maxRetries; retry++ {
+			if retry > 0 {
+				logger.Info("Retrying send to channel", 
+					zap.String("fileName", params.FileName),
+					zap.String("partName", params.PartName),
+					zap.Int("chunkNo", params.PartNo),
+					zap.Int("retry", retry))
+			}
+
+			res, sendErr = target.Media(ctx, document)
+			if sendErr == nil {
+				break
+			}
+
+			logger.Error("Send to channel attempt failed", 
+				zap.String("fileName", params.FileName),
+				zap.String("partName", params.PartName),
+				zap.Int("chunkNo", params.PartNo),
+				zap.Int("retry", retry),
+				zap.Error(sendErr))
+
+			if retry < maxRetries-1 {
+				// Wait before retrying
+				time.Sleep(time.Duration(retry+1) * 5 * time.Second)
+			}
+		}
+
+		if sendErr != nil {
+			logger.Error("All send to channel attempts failed", 
+				zap.String("fileName", params.FileName),
+				zap.String("partName", params.PartName),
+				zap.Int("chunkNo", params.PartNo),
+				zap.Error(sendErr))
 			// Delete status message on failure
 			if statusMsgId != 0 {
 				if delErr := tgc.DeleteStatusMessage(ctx, apiClient, channelId, statusMsgId); delErr != nil {
 					logger.Warn("Failed to delete status message after error", zap.Error(delErr))
 				}
 			}
-			return err
+			return sendErr
 		}
 
-		logger.Info("Media sent to channel successfully")
-
-		updates := res.(*tg.Updates)
+		updates := res.(tg.Updates)
 		var message *tg.Message
 
 		for _, update := range updates.Updates {
