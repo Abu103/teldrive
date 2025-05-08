@@ -201,6 +201,13 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		channelUser = strings.Split(token, ":")[0]
 	}
 
+	// Configure middlewares for the client pool
+	middlewares := tgc.NewMiddleware(&a.cnf.TG, 
+		tgc.WithFloodWait(),
+		tgc.WithRecovery(uploadCtx),
+		tgc.WithRetry(a.cnf.TG.Uploads.MaxRetries),
+		tgc.WithRateLimit())
+
 	// Create a new client pool with a smaller size for uploads
 	uploadPool := pool.NewPool(client, int64(1), middlewares...)
 	defer uploadPool.Close()
