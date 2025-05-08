@@ -114,6 +114,10 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		channelId = params.ChannelId.Value
 	}
 
+	logger.Info("Using channel ID", 
+		zap.Int64("channelId", channelId),
+		zap.Bool("isDefault", params.ChannelId.Value == 0))
+
 	tokens, err := getBotsToken(a.db, a.cache, userId, channelId)
 
 	if err != nil {
@@ -168,7 +172,10 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 			return err
 		}
 
-		logger.Info("Got channel successfully", zap.Int64("channelId", channelId))
+		logger.Info("Got channel successfully", 
+			zap.Int64("channelId", channelId),
+			zap.Int64("channelChannelId", channel.ChannelID),
+			zap.Int64("channelAccessHash", channel.AccessHash))
 
 		// Send initial status message
 		statusMsg := fmt.Sprintf("⏳ Uploading part %d of %s...", params.PartNo, params.FileName)
@@ -226,7 +233,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 
 		// Update progress periodically
 		go func() {
-			ticker := time.NewTicker(2 * time.Second)
+			ticker := time.NewTicker(10 * time.Second)
 			defer ticker.Stop()
 
 			for {
