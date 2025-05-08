@@ -257,7 +257,6 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		minInterval:  2 * time.Second,  // Update every 2 seconds
 		minChange:    0.5,              // Update on 0.5% change
 		lastUpdate:   time.Now(),
-		mu:           &sync.Mutex{},
 	}
 
 	// Create a progress reader with better error handling
