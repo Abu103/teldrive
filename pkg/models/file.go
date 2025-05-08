@@ -3,7 +3,7 @@ package models
 import (
 	"time"
 
-	"github.com/tgdrive/teldrive/internal/api"
+	"github.com/Abu103/teldrive/internal/api"
 	"gorm.io/datatypes"
 )
 

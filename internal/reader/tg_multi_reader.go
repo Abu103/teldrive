@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/gotd/td/tg"
-	"github.com/tgdrive/teldrive/internal/cache"
-	"github.com/tgdrive/teldrive/internal/config"
-	"github.com/tgdrive/teldrive/internal/tgc"
+	"github.com/Abu103/teldrive/internal/cache"
+	"github.com/Abu103/teldrive/internal/config"
+	"github.com/Abu103/teldrive/internal/tgc"
 	"golang.org/x/sync/errgroup"
 )
 

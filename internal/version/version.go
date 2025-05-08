@@ -3,7 +3,7 @@ package version
 import (
 	"runtime"
 
-	"github.com/tgdrive/teldrive/internal/api"
+	"github.com/Abu103/teldrive/internal/api"
 )
 
 var (

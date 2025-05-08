@@ -7,7 +7,7 @@ import (
 	"path"
 	"strings"
 
-	"github.com/tgdrive/teldrive/internal/logging"
+	"github.com/Abu103/teldrive/internal/logging"
 	"go.uber.org/zap"
 )
 

@@ -12,20 +12,20 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tgdrive/teldrive/internal/api"
-	"github.com/tgdrive/teldrive/internal/auth"
-	"github.com/tgdrive/teldrive/internal/crypt"
-	"github.com/tgdrive/teldrive/internal/logging"
-	"github.com/tgdrive/teldrive/internal/pool"
-	"github.com/tgdrive/teldrive/internal/tgc"
+	"github.com/Abu103/teldrive/internal/api"
+	"github.com/Abu103/teldrive/internal/auth"
+	"github.com/Abu103/teldrive/internal/crypt"
+	"github.com/Abu103/teldrive/internal/logging"
+	"github.com/Abu103/teldrive/internal/pool"
+	"github.com/Abu103/teldrive/internal/tgc"
 	"go.uber.org/zap"
 
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/message"
 	"github.com/gotd/td/telegram/uploader"
 	"github.com/gotd/td/tg"
-	"github.com/tgdrive/teldrive/pkg/mapper"
-	"github.com/tgdrive/teldrive/pkg/models"
+	"github.com/Abu103/teldrive/pkg/mapper"
+	"github.com/Abu103/teldrive/pkg/models"
 )
 
 var (

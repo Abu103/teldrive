@@ -1,4 +1,4 @@
-module github.com/tgdrive/teldrive
+module github.com/Abu103/teldrive
 
 go 1.24
 

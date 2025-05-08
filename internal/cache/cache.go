@@ -11,7 +11,7 @@ import (
 
 	"github.com/coocood/freecache"
 	"github.com/redis/go-redis/v9"
-	"github.com/tgdrive/teldrive/internal/config"
+	"github.com/Abu103/teldrive/internal/config"
 	"github.com/vmihailenco/msgpack/v5"
 )
 

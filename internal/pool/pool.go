@@ -7,7 +7,7 @@ import (
 
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/tg"
-	"github.com/tgdrive/teldrive/internal/logging"
+	"github.com/Abu103/teldrive/internal/logging"
 	"go.uber.org/zap"
 )
 

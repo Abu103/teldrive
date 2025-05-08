@@ -12,7 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
-	"github.com/tgdrive/teldrive/internal/duration"
+	"github.com/Abu103/teldrive/internal/duration"
 )
 
 type ServerCmdConfig struct {

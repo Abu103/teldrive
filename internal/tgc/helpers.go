@@ -11,9 +11,9 @@ import (
 
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/tg"
-	"github.com/tgdrive/teldrive/internal/config"
-	"github.com/tgdrive/teldrive/internal/utils"
-	"github.com/tgdrive/teldrive/pkg/types"
+	"github.com/Abu103/teldrive/internal/config"
+	"github.com/Abu103/teldrive/internal/utils"
+	"github.com/Abu103/teldrive/pkg/types"
 	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
 )

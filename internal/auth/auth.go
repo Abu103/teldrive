@@ -7,11 +7,11 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/ogen-go/ogen/ogenerrors"
-	"github.com/tgdrive/teldrive/internal/api"
-	"github.com/tgdrive/teldrive/internal/cache"
-	"github.com/tgdrive/teldrive/internal/config"
-	"github.com/tgdrive/teldrive/pkg/models"
-	"github.com/tgdrive/teldrive/pkg/types"
+	"github.com/Abu103/teldrive/internal/api"
+	"github.com/Abu103/teldrive/internal/cache"
+	"github.com/Abu103/teldrive/internal/config"
+	"github.com/Abu103/teldrive/pkg/models"
+	"github.com/Abu103/teldrive/pkg/types"
 	"gorm.io/gorm"
 )
 

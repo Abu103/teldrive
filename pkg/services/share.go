@@ -8,12 +8,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tgdrive/teldrive/internal/api"
-	"github.com/tgdrive/teldrive/internal/appcontext"
-	"github.com/tgdrive/teldrive/internal/cache"
-	"github.com/tgdrive/teldrive/internal/database"
-	"github.com/tgdrive/teldrive/pkg/mapper"
-	"github.com/tgdrive/teldrive/pkg/models"
+	"github.com/Abu103/teldrive/internal/api"
+	"github.com/Abu103/teldrive/internal/appcontext"
+	"github.com/Abu103/teldrive/internal/cache"
+	"github.com/Abu103/teldrive/internal/database"
+	"github.com/Abu103/teldrive/pkg/mapper"
+	"github.com/Abu103/teldrive/pkg/models"
 	"golang.org/x/crypto/bcrypt"
 )
 
