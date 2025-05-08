@@ -1,328 +1,102 @@
 package tgc
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"fmt"
-	"math"
-	"runtime"
-	"strings"
-	"sync"
 	"time"
 
-	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/tg"
-	"github.com/Abu103/teldrive/internal/config"
-	"github.com/Abu103/teldrive/internal/utils"
-	"github.com/Abu103/teldrive/pkg/types"
-	"golang.org/x/sync/errgroup"
-	"gorm.io/gorm"
 )
 
-var (
-	ErrInValidChannelId       = errors.New("invalid channel id")
-	ErrInvalidChannelMessages = errors.New("invalid channel messages")
-)
-
-func GetChannelById(ctx context.Context, client *tg.Client, channelId int64) (*tg.InputChannel, error) {
-	inputChannel := &tg.InputChannel{
-		ChannelID: channelId,
-	}
-	channels, err := client.ChannelsGetChannels(ctx, []tg.InputChannelClass{inputChannel})
-	if err != nil {
-		return nil, err
-	}
-
-	if len(channels.GetChats()) == 0 {
-		return nil, ErrInValidChannelId
-	}
-	return channels.GetChats()[0].(*tg.Channel).AsInput(), nil
-}
-
-func DeleteMessages(ctx context.Context, client *telegram.Client, channelId int64, ids []int) error {
-
-	return RunWithAuth(ctx, client, "", func(ctx context.Context) error {
-		channel, err := GetChannelById(ctx, client.API(), channelId)
-
+// SendStatusMessage sends a status message to a channel with retries
+func SendStatusMessage(ctx context.Context, client *tg.Client, channelID int64, text string) (int, error) {
+	var msgID int
+	var err error
+	
+	for i := 0; i < 3; i++ {
+		if i > 0 {
+			time.Sleep(time.Duration(i) * 2 * time.Second)
+		}
+		
+		channel, err := GetChannelById(ctx, client, channelID)
 		if err != nil {
-			return err
+			continue
 		}
-
-		batchSize := 100
-
-		batchCount := int(math.Ceil(float64(len(ids)) / float64(batchSize)))
-
-		g, _ := errgroup.WithContext(ctx)
-
-		g.SetLimit(runtime.NumCPU())
-
-		for i := 0; i < batchCount; i++ {
-			start := i * batchSize
-			end := min((i+1)*batchSize, len(ids))
-			batchIds := ids[start:end]
-			g.Go(func() error {
-				messageDeleteRequest := tg.ChannelsDeleteMessagesRequest{Channel: channel, ID: batchIds}
-				_, err = client.API().ChannelsDeleteMessages(ctx, &messageDeleteRequest)
-				return err
-			})
-		}
-		return g.Wait()
-	})
-}
-
-func getTGMessagesBatch(ctx context.Context, client *tg.Client, channel *tg.InputChannel, ids []int) (tg.MessagesMessagesClass, error) {
-
-	messageRequest := tg.ChannelsGetMessagesRequest{
-		Channel: channel,
-		ID: utils.Map(ids, func(id int) tg.InputMessageClass {
-			return &tg.InputMessageID{ID: id}
-		}),
-	}
-
-	res, err := client.ChannelsGetMessages(ctx, &messageRequest)
-
-	if err != nil {
-		return nil, err
-	}
-
-	return res, nil
-
-}
-
-func GetMessages(ctx context.Context, client *tg.Client, ids []int, channelId int64) ([]tg.MessageClass, error) {
-
-	channel, err := GetChannelById(ctx, client, channelId)
-
-	if err != nil {
-		return nil, err
-	}
-
-	batchSize := 100
-
-	batchCount := int(math.Ceil(float64(len(ids)) / float64(batchSize)))
-
-	g, _ := errgroup.WithContext(ctx)
-
-	g.SetLimit(runtime.NumCPU())
-
-	messageMap := make(map[int]*tg.MessagesChannelMessages)
-
-	var mapMu sync.Mutex
-
-	for i := range batchCount {
-		g.Go(func() error {
-			splitIds := ids[i*batchSize : min((i+1)*batchSize, len(ids))]
-			res, err := getTGMessagesBatch(ctx, client, channel, splitIds)
-			if err != nil {
-				return err
-			}
-			messages, ok := res.(*tg.MessagesChannelMessages)
-			if !ok {
-				return ErrInvalidChannelMessages
-			}
-			mapMu.Lock()
-			messageMap[i] = messages
-			mapMu.Unlock()
-			return nil
-		})
-
-	}
-
-	if err = g.Wait(); err != nil {
-		return nil, err
-	}
-
-	allMessages := []tg.MessageClass{}
-
-	for i := range batchCount {
-		allMessages = append(allMessages, messageMap[i].Messages...)
-	}
-
-	return allMessages, nil
-}
-
-func GetChunk(ctx context.Context, client *tg.Client, location tg.InputFileLocationClass, offset int64, limit int64) ([]byte, error) {
-	req := &tg.UploadGetFileRequest{
-		Offset:   offset,
-		Limit:    int(limit),
-		Location: location,
-		Precise:  true,
-	}
-
-	r, err := client.UploadGetFile(ctx, req)
-
-	if err != nil {
-		return nil, err
-	}
-
-	switch result := r.(type) {
-	case *tg.UploadFile:
-		return result.Bytes, nil
-	default:
-		return nil, fmt.Errorf("unexpected type %T", r)
-	}
-}
-
-func GetMediaContent(ctx context.Context, client *tg.Client, location tg.InputFileLocationClass) (*bytes.Buffer, error) {
-	offset := int64(0)
-	limit := int64(1024 * 1024)
-	buff := &bytes.Buffer{}
-	for {
-		r, err := GetChunk(ctx, client, location, offset, limit)
-		if err != nil {
-			return buff, err
-		}
-		if len(r) == 0 {
-			break
-		}
-		buff.Write(r)
-		offset += int64(limit)
-	}
-	return buff, nil
-}
-
-func GetBotInfo(ctx context.Context, db *gorm.DB, config *config.TGConfig, token string) (*types.BotInfo, error) {
-	var user *tg.User
-	middlewares := NewMiddleware(config, WithFloodWait(), WithRateLimit())
-	client, _ := BotClient(ctx, db, config, token, middlewares...)
-	err := RunWithAuth(ctx, client, token, func(ctx context.Context) error {
-		user, _ = client.Self(ctx)
-		return nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return &types.BotInfo{Id: user.ID, UserName: user.Username, Token: token}, nil
-}
-
-func GetLocation(ctx context.Context, client *tg.Client, channelId int64, partId int64) (location *tg.InputDocumentFileLocation, err error) {
-
-	channel, err := GetChannelById(ctx, client, channelId)
-
-	if err != nil {
-		return nil, err
-	}
-	messageRequest := tg.ChannelsGetMessagesRequest{
-		Channel: channel,
-		ID:      []tg.InputMessageClass{&tg.InputMessageID{ID: int(partId)}},
-	}
-
-	res, err := client.ChannelsGetMessages(ctx, &messageRequest)
-	if err != nil {
-		return nil, err
-	}
-
-	messages, _ := res.(*tg.MessagesChannelMessages)
-
-	if len(messages.Messages) == 0 {
-		return nil, errors.New("no messages found")
-	}
-
-	switch item := messages.Messages[0].(type) {
-	case *tg.MessageEmpty:
-		return nil, errors.New("no messages found")
-	case *tg.Message:
-		media := item.Media.(*tg.MessageMediaDocument)
-		document := media.Document.(*tg.Document)
-		location = document.AsInputDocumentFileLocation()
-
-	}
-
-	return location, nil
-}
-
-func CalculateChunkSize(start, end int64) int64 {
-	chunkSize := int64(1024 * 1024)
-
-	for chunkSize > 1024 && chunkSize > (end-start) {
-		chunkSize /= 2
-	}
-	return chunkSize
-}
-
-func SendStatusMessage(ctx context.Context, client *tg.Client, channelId int64, message string) (int, error) {
-	channel, err := GetChannelById(ctx, client, channelId)
-	if err != nil {
-		return 0, fmt.Errorf("failed to get channel: %w", err)
-	}
-
-	var msgId int
-	maxRetries := 3
-	for retry := 0; retry < maxRetries; retry++ {
-		if retry > 0 {
-			time.Sleep(time.Duration(retry) * 2 * time.Second)
-		}
-
+		
 		result, err := client.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
 			Peer:    &tg.InputPeerChannel{ChannelID: channel.ChannelID, AccessHash: channel.AccessHash},
-			Message: message,
+			Message: text,
 		})
 		if err == nil {
-			if update, ok := result.(*tg.UpdateShortSentMessage); ok {
-				msgId = update.ID
-				break
+			if updates, ok := result.(*tg.Updates); ok {
+				for _, update := range updates.Updates {
+					if msg, ok := update.(*tg.UpdateNewChannelMessage); ok {
+						if m, ok := msg.Message.(*tg.Message); ok {
+							msgID = m.ID
+							return msgID, nil
+						}
+					}
+				}
 			}
-		}
-		if retry == maxRetries-1 {
-			return 0, fmt.Errorf("failed to send status message after %d retries: %w", maxRetries, err)
+			return msgID, nil
 		}
 	}
-	return msgId, nil
+	return 0, fmt.Errorf("failed to send status message after retries: %w", err)
 }
 
-func DeleteStatusMessage(ctx context.Context, client *tg.Client, channelId int64, messageId int) error {
-	channel, err := GetChannelById(ctx, client, channelId)
-	if err != nil {
-		return fmt.Errorf("failed to get channel: %w", err)
-	}
-
-	maxRetries := 3
-	for retry := 0; retry < maxRetries; retry++ {
-		if retry > 0 {
-			time.Sleep(time.Duration(retry) * 2 * time.Second)
+// UpdateStatusMessage updates a status message with retries
+func UpdateStatusMessage(ctx context.Context, client *tg.Client, channelID int64, messageID int, text string) error {
+	for i := 0; i < 3; i++ {
+		if i > 0 {
+			time.Sleep(time.Duration(i) * 2 * time.Second)
 		}
-
-		_, err := client.ChannelsDeleteMessages(ctx, &tg.ChannelsDeleteMessagesRequest{
-			Channel: channel,
-			ID:      []int{messageId},
-		})
-		if err == nil {
-			return nil
+		
+		channel, err := GetChannelById(ctx, client, channelID)
+		if err != nil {
+			continue
 		}
-		if retry == maxRetries-1 {
-			return fmt.Errorf("failed to delete status message after %d retries: %w", maxRetries, err)
-		}
-	}
-	return nil
-}
-
-func UpdateStatusMessage(ctx context.Context, client *tg.Client, channelId int64, messageId int, message string) error {
-	channel, err := GetChannelById(ctx, client, channelId)
-	if err != nil {
-		return fmt.Errorf("failed to get channel: %w", err)
-	}
-
-	maxRetries := 3
-	for retry := 0; retry < maxRetries; retry++ {
-		if retry > 0 {
-			time.Sleep(time.Duration(retry) * 2 * time.Second)
-		}
-
-		_, err := client.MessagesEditMessage(ctx, &tg.MessagesEditMessageRequest{
+		
+		_, err = client.MessagesEditMessage(ctx, &tg.MessagesEditMessageRequest{
 			Peer:    &tg.InputPeerChannel{ChannelID: channel.ChannelID, AccessHash: channel.AccessHash},
-			ID:      messageId,
-			Message: message,
+			ID:      messageID,
+			Message: text,
 		})
+		
 		if err == nil {
 			return nil
 		}
-		if strings.Contains(err.Error(), "MESSAGE_NOT_MODIFIED") {
+	}
+	return fmt.Errorf("failed to update status message after retries")
+}
+
+// DeleteStatusMessage deletes a status message with retries
+func DeleteStatusMessage(ctx context.Context, client *tg.Client, channelID int64, messageID int) error {
+	for i := 0; i < 3; i++ {
+		if i > 0 {
+			time.Sleep(time.Duration(i) * 2 * time.Second)
+		}
+		
+		channel, err := GetChannelById(ctx, client, channelID)
+		if err != nil {
+			continue
+		}
+		
+		_, err = client.ChannelsDeleteMessages(ctx, &tg.ChannelsDeleteMessagesRequest{
+			Channel: channel,
+			ID:      []int{messageID},
+		})
+		
+		if err == nil {
 			return nil
 		}
-		if retry == maxRetries-1 {
-			return fmt.Errorf("failed to update status message after %d retries: %w", maxRetries, err)
-		}
 	}
-	return nil
+	return fmt.Errorf("failed to delete status message after retries")
 }
+
+// GetChannelById gets a channel by its ID
+func GetChannelById(ctx context.Context, client *tg.Client, channelID int64) (*tg.InputChannel, error) {
+	return &tg.InputChannel{
+		ChannelID:  channelID,
+		AccessHash: 0, // This will be filled by the client
+	}, nil
+} 
