@@ -246,7 +246,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		defer uploadCancel()
 
 		// Create a progress reader
-		progressReader := &progressReader{
+		pr := &progressReader{
 			reader:   fileStream,
 			progress: func(bytes int64) {
 				atomic.StoreInt64(&uploaded, bytes)
@@ -292,7 +292,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 					zap.Int("chunkNo", params.PartNo),
 					zap.Int("retry", retry))
 				// Reset the progress reader for retry
-				progressReader = &progressReader{
+				pr = &progressReader{
 					reader:   fileStream,
 					progress: func(bytes int64) {
 						atomic.StoreInt64(&uploaded, bytes)
@@ -300,7 +300,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 				}
 			}
 
-			upload, uploadErr = u.Upload(uploadCtx, uploader.NewUpload(params.PartName, progressReader, fileSize))
+			upload, uploadErr = u.Upload(uploadCtx, uploader.NewUpload(params.PartName, pr, fileSize))
 			if uploadErr == nil {
 				break
 			}
