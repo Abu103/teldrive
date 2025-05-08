@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/WinterYukky/gorm-extra-clause-plugin/exclause"
-	"github.com/tgdrive/teldrive/internal/api"
-	"github.com/tgdrive/teldrive/internal/utils"
-	"github.com/tgdrive/teldrive/pkg/mapper"
-	"github.com/tgdrive/teldrive/pkg/models"
+	"github.com/Abu103/teldrive/internal/api"
+	"github.com/Abu103/teldrive/internal/utils"
+	"github.com/Abu103/teldrive/pkg/mapper"
+	"github.com/Abu103/teldrive/pkg/models"
 
 	"gorm.io/gorm"
 )

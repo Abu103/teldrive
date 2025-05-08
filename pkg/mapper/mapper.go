@@ -1,9 +1,9 @@
 package mapper
 
 import (
-	"github.com/tgdrive/teldrive/internal/api"
-	"github.com/tgdrive/teldrive/internal/utils"
-	"github.com/tgdrive/teldrive/pkg/models"
+	"github.com/Abu103/teldrive/internal/api"
+	"github.com/Abu103/teldrive/internal/utils"
+	"github.com/Abu103/teldrive/pkg/models"
 )
 
 func ToFileOut(file models.File) *api.File {

@@ -6,14 +6,15 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"math/rand"
 	"runtime"
 	"sync"
 
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/tg"
-	"github.com/tgdrive/teldrive/internal/config"
-	"github.com/tgdrive/teldrive/internal/utils"
-	"github.com/tgdrive/teldrive/pkg/types"
+	"github.com/Abu103/teldrive/internal/config"
+	"github.com/Abu103/teldrive/internal/utils"
+	"github.com/Abu103/teldrive/pkg/types"
 	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
 )
@@ -237,4 +238,36 @@ func CalculateChunkSize(start, end int64) int64 {
 		chunkSize /= 2
 	}
 	return chunkSize
+}
+
+func SendStatusMessage(ctx context.Context, client *tg.Client, channelId int64, message string) (int, error) {
+	channel, err := GetChannelById(ctx, client, channelId)
+	if err != nil {
+		return 0, err
+	}
+
+	result, err := client.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
+		Peer:     channel,
+		Message:  message,
+		RandomID: rand.Int63(),
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	// Extract message ID from the result
+	switch msg := result.(type) {
+	case *tg.Updates:
+		for _, update := range msg.Updates {
+			if update, ok := update.(*tg.UpdateMessageID); ok {
+				return update.ID, nil
+			}
+		}
+	}
+
+	return 0, errors.New("could not get message ID")
+}
+
+func DeleteStatusMessage(ctx context.Context, client *telegram.Client, channelId int64, messageId int) error {
+	return DeleteMessages(ctx, client, channelId, []int{messageId})
 }

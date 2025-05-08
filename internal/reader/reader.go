@@ -5,11 +5,11 @@ import (
 	"io"
 
 	"github.com/gotd/td/tg"
-	"github.com/tgdrive/teldrive/internal/cache"
-	"github.com/tgdrive/teldrive/internal/config"
-	"github.com/tgdrive/teldrive/internal/crypt"
-	"github.com/tgdrive/teldrive/pkg/models"
-	"github.com/tgdrive/teldrive/pkg/types"
+	"github.com/Abu103/teldrive/internal/cache"
+	"github.com/Abu103/teldrive/internal/config"
+	"github.com/Abu103/teldrive/internal/crypt"
+	"github.com/Abu103/teldrive/pkg/models"
+	"github.com/Abu103/teldrive/pkg/types"
 )
 
 type Range struct {

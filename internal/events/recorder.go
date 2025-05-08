@@ -3,7 +3,7 @@ package events
 import (
 	"context"
 
-	"github.com/tgdrive/teldrive/pkg/models"
+	"github.com/Abu103/teldrive/pkg/models"
 	"go.uber.org/zap"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"

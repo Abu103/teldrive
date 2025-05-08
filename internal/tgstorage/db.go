@@ -7,7 +7,7 @@ import (
 
 	"github.com/glebarez/sqlite"
 	"github.com/go-faster/errors"
-	"github.com/tgdrive/teldrive/internal/utils"
+	"github.com/Abu103/teldrive/internal/utils"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )

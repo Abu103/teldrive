@@ -12,20 +12,20 @@ import (
 	"strings"
 	"time"
 
-	"github.com/tgdrive/teldrive/internal/api"
-	"github.com/tgdrive/teldrive/internal/auth"
-	"github.com/tgdrive/teldrive/internal/crypt"
-	"github.com/tgdrive/teldrive/internal/logging"
-	"github.com/tgdrive/teldrive/internal/pool"
-	"github.com/tgdrive/teldrive/internal/tgc"
+	"github.com/Abu103/teldrive/internal/api"
+	"github.com/Abu103/teldrive/internal/auth"
+	"github.com/Abu103/teldrive/internal/crypt"
+	"github.com/Abu103/teldrive/internal/logging"
+	"github.com/Abu103/teldrive/internal/pool"
+	"github.com/Abu103/teldrive/internal/tgc"
 	"go.uber.org/zap"
 
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/message"
 	"github.com/gotd/td/telegram/uploader"
 	"github.com/gotd/td/tg"
-	"github.com/tgdrive/teldrive/pkg/mapper"
-	"github.com/tgdrive/teldrive/pkg/models"
+	"github.com/Abu103/teldrive/pkg/mapper"
+	"github.com/Abu103/teldrive/pkg/models"
 )
 
 var (
@@ -164,6 +164,14 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 			return err
 		}
 
+		// Send initial status message
+		statusMsg := fmt.Sprintf("⏳ Uploading part %d of %s...", params.PartNo, params.FileName)
+		statusMsgId, err := tgc.SendStatusMessage(ctx, client.API(), channelId, statusMsg)
+		if err != nil {
+			logger.Warn("Failed to send status message", zap.Error(err))
+			// Don't return error, continue with upload
+		}
+
 		var salt string
 
 		if params.Encrypted.Value {
@@ -184,6 +192,15 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		u := uploader.NewUploader(client).WithThreads(a.cnf.TG.Uploads.Threads).WithPartSize(512 * 1024)
 
 		upload, err := u.Upload(ctx, uploader.NewUpload(params.PartName, fileStream, fileSize))
+
+		// Delete status message after upload completes or fails
+		if statusMsgId != 0 {
+			defer func() {
+				if err := tgc.DeleteStatusMessage(ctx, client, channelId, statusMsgId); err != nil {
+					logger.Warn("Failed to delete status message", zap.Error(err))
+				}
+			}()
+		}
 
 		if err != nil {
 			return err
