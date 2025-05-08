@@ -274,6 +274,16 @@ func SendStatusMessage(ctx context.Context, client *tg.Client, channelId int64, 
 	return 0, errors.New("could not get message ID")
 }
 
-func DeleteStatusMessage(ctx context.Context, client *telegram.Client, channelId int64, messageId int) error {
-	return DeleteMessages(ctx, client, channelId, []int{messageId})
+func DeleteStatusMessage(ctx context.Context, client *tg.Client, channelId int64, messageId int) error {
+	channel, err := GetChannelById(ctx, client, channelId)
+	if err != nil {
+		return err
+	}
+
+	messageDeleteRequest := tg.ChannelsDeleteMessagesRequest{
+		Channel: channel,
+		ID:      []int{messageId},
+	}
+	_, err = client.ChannelsDeleteMessages(ctx, &messageDeleteRequest)
+	return err
 }
