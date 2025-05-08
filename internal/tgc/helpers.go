@@ -287,3 +287,28 @@ func DeleteStatusMessage(ctx context.Context, client *tg.Client, channelId int64
 	_, err = client.ChannelsDeleteMessages(ctx, &messageDeleteRequest)
 	return err
 }
+
+func UpdateStatusMessage(ctx context.Context, client *tg.Client, channelId int64, messageId int, newMessage string) error {
+	channel, err := GetChannelById(ctx, client, channelId)
+	if err != nil {
+		return err
+	}
+
+	// Convert InputChannel to InputPeerChannel
+	peer := &tg.InputPeerChannel{
+		ChannelID:  channel.ChannelID,
+		AccessHash: channel.AccessHash,
+	}
+
+	// Edit the message
+	_, err = client.MessagesEditMessage(ctx, &tg.MessagesEditMessageRequest{
+		Peer:      peer,
+		ID:        messageId,
+		Message:   newMessage,
+		Media:     &tg.InputMediaEmpty{},
+		ReplyMarkup: &tg.ReplyKeyboardHide{
+			Selective: false,
+		},
+	})
+	return err
+}
