@@ -20,7 +20,6 @@ import (
 	"github.com/Abu103/teldrive/internal/logging"
 	"github.com/Abu103/teldrive/internal/pool"
 	"github.com/Abu103/teldrive/internal/tgc"
-	"github.com/Abu103/teldrive/pkg/uploader"
 	"go.uber.org/zap"
 
 	"github.com/gotd/td/telegram"
