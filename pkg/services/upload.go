@@ -201,7 +201,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		channelUser = strings.Split(token, ":")[0]
 	}
 
-	// Configure middlewares for the client pool
+	// Configure middlewares for the client pool with better error handling
 	middlewares := tgc.NewMiddleware(&a.cnf.TG, 
 		tgc.WithFloodWait(),
 		tgc.WithRecovery(uploadCtx),
@@ -214,6 +214,12 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 
 	// Get the API client once at the start
 	apiClient = client.API()
+
+	// Add connection health check
+	if err := checkConnection(uploadCtx, apiClient); err != nil {
+		logger.Error("Connection health check failed", zap.Error(err))
+		return nil, fmt.Errorf("connection health check failed: %w", err)
+	}
 
 	channel, err := tgc.GetChannelById(uploadCtx, apiClient, channelId)
 	if err != nil {
@@ -245,12 +251,13 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		}
 	}
 
-	// Create a progress tracker with more frequent updates
+	// Create a progress tracker with more frequent updates and better error handling
 	tracker := &progressTracker{
 		total:        fileSize,
 		minInterval:  2 * time.Second,  // Update every 2 seconds
 		minChange:    0.5,              // Update on 0.5% change
 		lastUpdate:   time.Now(),
+		mu:           &sync.Mutex{},
 	}
 
 	// Create a progress reader with better error handling
@@ -544,4 +551,13 @@ func generateRandomSalt() (string, error) {
 	hashedSalt := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
 
 	return hashedSalt, nil
+}
+
+func checkConnection(ctx context.Context, client *tg.Client) error {
+	// Try to get account info as a health check
+	_, err := client.AccountGetAccountTTL(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get account info: %w", err)
+	}
+	return nil
 }

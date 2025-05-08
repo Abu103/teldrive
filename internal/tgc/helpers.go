@@ -248,44 +248,28 @@ func SendStatusMessage(ctx context.Context, client *tg.Client, channelId int64, 
 		return 0, fmt.Errorf("failed to get channel: %w", err)
 	}
 
-	// Convert InputChannel to InputPeerChannel
-	peer := &tg.InputPeerChannel{
-		ChannelID:  channel.ChannelID,
-		AccessHash: channel.AccessHash,
-	}
-
-	// Add retry logic for sending status message
-	var result tg.UpdatesClass
-	var sendErr error
-	for retries := 0; retries < 3; retries++ {
-		if retries > 0 {
-			time.Sleep(time.Duration(retries) * 2 * time.Second)
+	var msgId int
+	maxRetries := 3
+	for retry := 0; retry < maxRetries; retry++ {
+		if retry > 0 {
+			time.Sleep(time.Duration(retry) * 2 * time.Second)
 		}
 
-		result, sendErr = client.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
-			Peer:     peer,
-			Message:  message,
-			RandomID: rand.Int63(),
+		result, err := client.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
+			Peer:    channel,
+			Message: message,
 		})
-		if sendErr == nil {
-			break
-		}
-	}
-	if sendErr != nil {
-		return 0, fmt.Errorf("failed to send status message after retries: %w", sendErr)
-	}
-
-	// Extract message ID from the result
-	switch msg := result.(type) {
-	case *tg.Updates:
-		for _, update := range msg.Updates {
-			if update, ok := update.(*tg.UpdateMessageID); ok {
-				return update.ID, nil
+		if err == nil {
+			if update, ok := result.(*tg.UpdateShortSentMessage); ok {
+				msgId = update.ID
+				break
 			}
 		}
+		if retry == maxRetries-1 {
+			return 0, fmt.Errorf("failed to send status message after %d retries: %w", maxRetries, err)
+		}
 	}
-
-	return 0, errors.New("could not get message ID from response")
+	return msgId, nil
 }
 
 func DeleteStatusMessage(ctx context.Context, client *tg.Client, channelId int64, messageId int) error {
@@ -294,53 +278,52 @@ func DeleteStatusMessage(ctx context.Context, client *tg.Client, channelId int64
 		return fmt.Errorf("failed to get channel: %w", err)
 	}
 
-	// Add retry logic for deleting status message
-	var deleteErr error
-	for retries := 0; retries < 3; retries++ {
-		if retries > 0 {
-			time.Sleep(time.Duration(retries) * 2 * time.Second)
+	maxRetries := 3
+	for retry := 0; retry < maxRetries; retry++ {
+		if retry > 0 {
+			time.Sleep(time.Duration(retry) * 2 * time.Second)
 		}
 
-		_, deleteErr = client.ChannelsDeleteMessages(ctx, &tg.ChannelsDeleteMessagesRequest{
+		_, err := client.ChannelsDeleteMessages(ctx, &tg.ChannelsDeleteMessagesRequest{
 			Channel: channel,
 			ID:      []int{messageId},
 		})
-		if deleteErr == nil {
+		if err == nil {
 			return nil
 		}
+		if retry == maxRetries-1 {
+			return fmt.Errorf("failed to delete status message after %d retries: %w", maxRetries, err)
+		}
 	}
-	return fmt.Errorf("failed to delete status message after retries: %w", deleteErr)
+	return nil
 }
 
-func UpdateStatusMessage(ctx context.Context, client *tg.Client, channelId int64, messageId int, newMessage string) error {
+func UpdateStatusMessage(ctx context.Context, client *tg.Client, channelId int64, messageId int, message string) error {
 	channel, err := GetChannelById(ctx, client, channelId)
 	if err != nil {
 		return fmt.Errorf("failed to get channel: %w", err)
 	}
 
-	// Add retry logic for updating status message
-	var updateErr error
-	for retries := 0; retries < 3; retries++ {
-		if retries > 0 {
-			time.Sleep(time.Duration(retries) * 2 * time.Second)
+	maxRetries := 3
+	for retry := 0; retry < maxRetries; retry++ {
+		if retry > 0 {
+			time.Sleep(time.Duration(retry) * 2 * time.Second)
 		}
 
-		_, updateErr = client.MessagesEditMessage(ctx, &tg.MessagesEditMessageRequest{
-			Peer: &tg.InputPeerChannel{
-				ChannelID:  channel.ChannelID,
-				AccessHash: channel.AccessHash,
-			},
+		_, err := client.MessagesEditMessage(ctx, &tg.MessagesEditMessageRequest{
+			Peer:    channel,
 			ID:      messageId,
-			Message: newMessage,
+			Message: message,
 		})
-		if updateErr == nil {
+		if err == nil {
 			return nil
 		}
-		
-		// If we get MESSAGE_NOT_MODIFIED, that's actually fine
-		if strings.Contains(updateErr.Error(), "MESSAGE_NOT_MODIFIED") {
+		if strings.Contains(err.Error(), "MESSAGE_NOT_MODIFIED") {
 			return nil
+		}
+		if retry == maxRetries-1 {
+			return fmt.Errorf("failed to update status message after %d retries: %w", maxRetries, err)
 		}
 	}
-	return fmt.Errorf("failed to update status message after retries: %w", updateErr)
+	return nil
 }
