@@ -8,6 +8,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -19,6 +20,7 @@ import (
 	"github.com/Abu103/teldrive/internal/logging"
 	"github.com/Abu103/teldrive/internal/pool"
 	"github.com/Abu103/teldrive/internal/tgc"
+	"github.com/Abu103/teldrive/pkg/uploader"
 	"go.uber.org/zap"
 
 	"github.com/gotd/td/telegram"
@@ -248,9 +250,16 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		}()
 
 		logger.Info("Starting file upload")
-		upload, err := u.Upload(ctx, uploader.NewUpload(params.PartName, fileStream, fileSize, func(bytes int64) {
-			atomic.StoreInt64(&uploaded, bytes)
-		}))
+		
+		// Create a progress reader
+		progressReader := &progressReader{
+			reader:   fileStream,
+			progress: func(bytes int64) {
+				atomic.StoreInt64(&uploaded, bytes)
+			},
+		}
+
+		upload, err := u.Upload(ctx, uploader.NewUpload(params.PartName, progressReader, fileSize))
 
 		// Update progress after upload completes
 		uploaded = fileSize
@@ -409,4 +418,19 @@ func generateRandomSalt() (string, error) {
 	hashedSalt := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
 
 	return hashedSalt, nil
+}
+
+type progressReader struct {
+	reader   io.Reader
+	progress func(int64)
+	read     int64
+}
+
+func (r *progressReader) Read(p []byte) (n int, err error) {
+	n, err = r.reader.Read(p)
+	if n > 0 && r.progress != nil {
+		r.read += int64(n)
+		r.progress(r.read)
+	}
+	return
 }
