@@ -14,7 +14,6 @@ enable = true
 max-open-connections = 25
 max-idle-connections = 10
 max-lifetime = "10m"
-enable = true
 
 [jwt]
 allowed-users = ["koobla007"]
