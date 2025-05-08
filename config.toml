@@ -21,18 +21,26 @@ secret = "3d83b297fefe647451cfaf07503e1ef4"
 session-time = "720h" 
 
 [tg]
+pool-size = 16
+rate = 200
+rate-burst = 10
+ntp = true
+disable-stream-bots = false
+storage-file = ''
+proxy = ''
 rate-limit = true
-rate = 100
-rate-burst = 5
-pool-size = 8
-reconnect-timeout = "5m"
-app-id = 22806755
-app-hash = "c6c12dbbee8bac63e9091dbaf6ef3b1d"
-upload_chat = 7331706161
-session_string = "1BVtsOIgBuwSeTmjl3eaQ6ysGhAMXG2qn0DE2SYdO61v4QyWBt769J6zKCX3qjSucwKabOE8WSjAHFsxWYj5FaJBkcpXg_PYANqSO36r9u7hSNVIYqrdfaLdc8_GQDK7XZzLYK2hL37co8Pe9H8b-NFxP3B-8eJLj9_DklHJqzl6OwoXth5zZGEAzxs6k4JFUbcr8PD3QLQo-p27f3ytYBGp6qCySC8xAUDxXRm0Nm3x4I3lTTlLi1DktPne2UtMIC_pW-vuiWN9ntFB573X3_izfLDRWy4z50dGWONPvbhNVhxYv9BFlAYZ-nfM11m-oK5efrxYl8BwiOoOblvUhWkS4Rtd_7qM="
+reconnect-timeout = '5m'
+
+[tg.stream]
+buffers = 16
+chunk-timeout = '30s'
 
 [tg.uploads]
-encryption-key = ""
+multi-threads = 4
+encryption-key = ''
+max-retries = 10
+retention = '7d'
+threads = '16'
 
 [log]
 level = "info"
