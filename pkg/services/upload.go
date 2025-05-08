@@ -201,13 +201,23 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 
 		client := uploadPool.Default(ctx)
 
-		// Set part size to 2MB (2 * 1024 * 1024) for all files
-		// This is the minimum size required by Telegram's API
-		partSize := 2 * 1024 * 1024 // 2MB
+		// Calculate part size based on file size
+		// Telegram requires part size to be divisible by 512KB (524288 bytes)
+		basePartSize := 512 * 1024 // 512KB
+		partSize := basePartSize
+		
+		// For files larger than 1GB, use 4MB parts
+		if fileSize > 1024*1024*1024 {
+			partSize = 4 * 1024 * 1024 // 4MB
+		} else {
+			// For smaller files, use 1MB parts
+			partSize = 1024 * 1024 // 1MB
+		}
 
 		logger.Info("Creating uploader", 
 			zap.Int("threads", a.cnf.TG.Uploads.Threads),
-			zap.Int("partSize", partSize))
+			zap.Int("partSize", partSize),
+			zap.Int64("fileSize", fileSize))
 
 		u := uploader.NewUploader(client).
 			WithThreads(a.cnf.TG.Uploads.Threads).
