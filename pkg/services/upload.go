@@ -213,7 +213,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 					progress := float64(uploaded) / float64(total) * 100
 					progressMsg := fmt.Sprintf("⏳ Uploading part %d of %s... %.1f%%", 
 						params.PartNo, params.FileName, progress)
-					if _, err := tgc.SendStatusMessage(ctx, client.API(), channelId, progressMsg); err != nil {
+					if _, err := tgc.SendStatusMessage(ctx, client, channelId, progressMsg); err != nil {
 						logger.Warn("Failed to update progress message", zap.Error(err))
 					}
 				}
