@@ -203,18 +203,27 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		var uploaded int64
 		total := fileSize
 
+		// Create a context for progress updates
+		progressCtx, progressCancel := context.WithCancel(ctx)
+		defer progressCancel()
+
 		// Update progress periodically
 		go func() {
 			ticker := time.NewTicker(5 * time.Second)
 			defer ticker.Stop()
 
-			for range ticker.C {
-				if statusMsgId != 0 {
-					progress := float64(uploaded) / float64(total) * 100
-					progressMsg := fmt.Sprintf("⏳ Uploading part %d of %s... %.1f%%", 
-						params.PartNo, params.FileName, progress)
-					if _, err := tgc.SendStatusMessage(ctx, client, channelId, progressMsg); err != nil {
-						logger.Warn("Failed to update progress message", zap.Error(err))
+			for {
+				select {
+				case <-progressCtx.Done():
+					return
+				case <-ticker.C:
+					if statusMsgId != 0 {
+						progress := float64(uploaded) / float64(total) * 100
+						progressMsg := fmt.Sprintf("⏳ Uploading part %d of %s... %.1f%%", 
+							params.PartNo, params.FileName, progress)
+						if _, err := tgc.SendStatusMessage(ctx, client, channelId, progressMsg); err != nil {
+							logger.Warn("Failed to update progress message", zap.Error(err))
+						}
 					}
 				}
 			}
@@ -232,6 +241,11 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		}
 
 		if err != nil {
+			logger.Error("upload failed", 
+				zap.String("fileName", params.FileName),
+				zap.String("partName", params.PartName),
+				zap.Int("chunkNo", params.PartNo),
+				zap.Error(err))
 			return err
 		}
 
