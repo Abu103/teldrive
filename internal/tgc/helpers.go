@@ -246,8 +246,14 @@ func SendStatusMessage(ctx context.Context, client *tg.Client, channelId int64, 
 		return 0, err
 	}
 
+	// Convert InputChannel to InputPeerChannel
+	peer := &tg.InputPeerChannel{
+		ChannelID:  channel.ChannelID,
+		AccessHash: channel.AccessHash,
+	}
+
 	result, err := client.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
-		Peer:     channel,
+		Peer:     peer,
 		Message:  message,
 		RandomID: rand.Int63(),
 	})
