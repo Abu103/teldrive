@@ -204,7 +204,8 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		tgc.WithRetry(a.cnf.TG.Uploads.MaxRetries),
 		tgc.WithRateLimit())
 
-	uploadPool := pool.NewPool(client, int64(a.cnf.TG.PoolSize), middlewares...)
+	// Create a new client pool with a smaller size for uploads
+	uploadPool := pool.NewPool(client, int64(2), middlewares...)
 
 	defer uploadPool.Close()
 
@@ -316,8 +317,8 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 			return nil, fmt.Errorf("failed to get upload client after retries")
 		}
 
-		// Use a fixed part size of 512KB (524288 bytes)
-		partSize := 524288 // 512KB
+		// Use a smaller part size of 256KB (262144 bytes) for better reliability
+		partSize := 262144 // 256KB
 
 		logger.Info("Creating uploader", 
 			zap.Int("threads", a.cnf.TG.Uploads.Threads),
