@@ -226,9 +226,17 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		var uploaded int64
 		total := fileSize
 
-		// Create a context for progress updates
-		progressCtx, progressCancel := context.WithCancel(ctx)
-		defer progressCancel()
+		// Create an independent context for this upload
+		uploadCtx, uploadCancel := context.WithCancel(context.Background())
+		defer uploadCancel()
+
+		// Create a progress reader
+		progressReader := &progressReader{
+			reader:   fileStream,
+			progress: func(bytes int64) {
+				atomic.StoreInt64(&uploaded, bytes)
+			},
+		}
 
 		// Update progress periodically
 		go func() {
@@ -237,7 +245,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 
 			for {
 				select {
-				case <-progressCtx.Done():
+				case <-uploadCtx.Done():
 					return
 				case <-ticker.C:
 					if statusMsgId != 0 {
@@ -257,21 +265,19 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 
 		logger.Info("Starting file upload")
 		
-		// Create a progress reader
-		progressReader := &progressReader{
-			reader:   fileStream,
-			progress: func(bytes int64) {
-				atomic.StoreInt64(&uploaded, bytes)
-			},
-		}
-
-		upload, err := u.Upload(ctx, uploader.NewUpload(params.PartName, progressReader, fileSize))
+		upload, err := u.Upload(uploadCtx, uploader.NewUpload(params.PartName, progressReader, fileSize))
 		if err != nil {
 			logger.Error("Upload failed", 
 				zap.String("fileName", params.FileName),
 				zap.String("partName", params.PartName),
 				zap.Int("chunkNo", params.PartNo),
 				zap.Error(err))
+			// Delete status message on failure
+			if statusMsgId != 0 {
+				if delErr := tgc.DeleteStatusMessage(ctx, apiClient, channelId, statusMsgId); delErr != nil {
+					logger.Warn("Failed to delete status message after error", zap.Error(delErr))
+				}
+			}
 			return err
 		}
 
@@ -296,6 +302,12 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		res, err := target.Media(ctx, document)
 		if err != nil {
 			logger.Error("Failed to send media to channel", zap.Error(err))
+			// Delete status message on failure
+			if statusMsgId != 0 {
+				if delErr := tgc.DeleteStatusMessage(ctx, apiClient, channelId, statusMsgId); delErr != nil {
+					logger.Warn("Failed to delete status message after error", zap.Error(delErr))
+				}
+			}
 			return err
 		}
 
@@ -359,15 +371,6 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 			}
 		default:
 			return ErrUploadFailed
-		}
-
-		// Delete status message after successful upload
-		if statusMsgId != 0 {
-			if err := tgc.DeleteStatusMessage(ctx, uploadClient, channelId, statusMsgId); err != nil {
-				logger.Warn("Failed to delete status message", zap.Error(err))
-			} else {
-				logger.Info("Deleted status message")
-			}
 		}
 
 		out = api.UploadPart{
