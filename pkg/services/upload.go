@@ -266,7 +266,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		logger.Info("Starting file upload")
 		
 		// Add retry logic for the upload
-		var upload *tg.InputFile
+		var upload tg.InputFileClass
 		var uploadErr error
 		maxRetries := 3
 		for retry := 0; retry < maxRetries; retry++ {
@@ -381,7 +381,12 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 			return sendErr
 		}
 
-		updates := res.(tg.Updates)
+		logger.Info("Media sent to channel successfully")
+
+		updates, ok := res.(*tg.Updates)
+		if !ok {
+			return fmt.Errorf("unexpected response type: %T", res)
+		}
 		var message *tg.Message
 
 		for _, update := range updates.Updates {
