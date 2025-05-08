@@ -190,25 +190,35 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		client := uploadPool.Default(ctx)
 
 		// Increase part size for large files
-		partSize := int64(2 * 1024 * 1024) // 2MB parts
+		partSize := 2 * 1024 * 1024 // 2MB parts
 		if fileSize > 1024*1024*1024 { // If file is larger than 1GB
-			partSize = int64(4 * 1024 * 1024) // 4MB parts
+			partSize = 4 * 1024 * 1024 // 4MB parts
 		}
 
 		u := uploader.NewUploader(client).
 			WithThreads(a.cnf.TG.Uploads.Threads).
-			WithPartSize(partSize).
-			WithProgress(func(p uploader.Progress) {
-				// Update status message with progress
+			WithPartSize(partSize)
+
+		// Create a progress tracker
+		var uploaded int64
+		total := fileSize
+
+		// Update progress periodically
+		go func() {
+			ticker := time.NewTicker(5 * time.Second)
+			defer ticker.Stop()
+
+			for range ticker.C {
 				if statusMsgId != 0 {
-					progress := float64(p.Uploaded) / float64(p.Total) * 100
+					progress := float64(uploaded) / float64(total) * 100
 					progressMsg := fmt.Sprintf("⏳ Uploading part %d of %s... %.1f%%", 
 						params.PartNo, params.FileName, progress)
 					if _, err := tgc.SendStatusMessage(ctx, client.API(), channelId, progressMsg); err != nil {
 						logger.Warn("Failed to update progress message", zap.Error(err))
 					}
 				}
-			})
+			}
+		}()
 
 		upload, err := u.Upload(ctx, uploader.NewUpload(params.PartName, fileStream, fileSize))
 
