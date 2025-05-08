@@ -279,21 +279,57 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 	}
 
 	// Use a smaller part size for better reliability
-	partSize := 131072 // 128KB
+	partSize := 65536 // 64KB
 
 	logger.Info("Starting upload with client", 
 		zap.String("bot", channelUser),
 		zap.Int("botNo", index),
-		zap.Int("threads", a.cnf.TG.Uploads.Threads),
+		zap.Int("threads", 1), // Use single thread for better reliability
 		zap.Int("partSize", partSize))
 
-	u := uploader.NewUploader(apiClient).
-		WithThreads(a.cnf.TG.Uploads.Threads).
-		WithPartSize(partSize)
+	// Add retry logic for the upload
+	var upload tg.InputFileClass
+	maxRetries := 3
+	for retry := 0; retry < maxRetries; retry++ {
+		if retry > 0 {
+			logger.Info("Retrying upload", 
+				zap.String("fileName", params.FileName),
+				zap.String("partName", params.PartName),
+				zap.Int("partNo", params.PartNo),
+				zap.Int("retry", retry))
+			
+			// Reset the progress reader for retry
+			pr = &progressReader{
+				reader:   fileStream,
+				progress: func(bytes int64) {
+					atomic.StoreInt64(&uploaded, bytes)
+				},
+			}
+		}
 
-	upload, err := u.Upload(uploadCtx, uploader.NewUpload(params.PartName, pr, fileSize))
+		u := uploader.NewUploader(apiClient).
+			WithThreads(1).  // Use single thread for better reliability
+			WithPartSize(partSize)
+
+		upload, err = u.Upload(uploadCtx, uploader.NewUpload(params.PartName, pr, fileSize))
+		if err == nil {
+			break
+		}
+
+		logger.Error("Upload attempt failed", 
+			zap.String("fileName", params.FileName),
+			zap.String("partName", params.PartName),
+			zap.Int("partNo", params.PartNo),
+			zap.Int("retry", retry),
+			zap.Error(err))
+
+		if retry < maxRetries-1 {
+			time.Sleep(time.Duration(retry+1) * 5 * time.Second)
+		}
+	}
+
 	if err != nil {
-		logger.Error("Upload failed", 
+		logger.Error("All upload attempts failed", 
 			zap.String("fileName", params.FileName),
 			zap.String("partName", params.PartName),
 			zap.Int("partNo", params.PartNo),
@@ -318,7 +354,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 
 	logger.Info("File uploaded successfully, sending to channel")
 
-	// Send to channel
+	// Send to channel with retry logic
 	document := message.UploadedDocument(upload).Filename(params.PartName).ForceFile(true)
 	sender := message.NewSender(apiClient)
 	target := sender.To(&tg.InputPeerChannel{
@@ -326,26 +362,51 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		AccessHash: channel.AccessHash,
 	})
 
-	res, err := target.Media(uploadCtx, document)
-	if err != nil {
-		logger.Error("Failed to send to channel", 
+	var res tg.UpdatesClass
+	var sendErr error
+	for retry := 0; retry < maxRetries; retry++ {
+		if retry > 0 {
+			logger.Info("Retrying send to channel", 
+				zap.String("fileName", params.FileName),
+				zap.String("partName", params.PartName),
+				zap.Int("partNo", params.PartNo),
+				zap.Int("retry", retry))
+		}
+
+		res, sendErr = target.Media(uploadCtx, document)
+		if sendErr == nil {
+			break
+		}
+
+		logger.Error("Send to channel attempt failed", 
 			zap.String("fileName", params.FileName),
 			zap.String("partName", params.PartName),
 			zap.Int("partNo", params.PartNo),
-			zap.Error(err))
+			zap.Int("retry", retry),
+			zap.Error(sendErr))
+
+		if retry < maxRetries-1 {
+			time.Sleep(time.Duration(retry+1) * 5 * time.Second)
+		}
+	}
+
+	if sendErr != nil {
+		logger.Error("All send to channel attempts failed", 
+			zap.String("fileName", params.FileName),
+			zap.String("partName", params.PartName),
+			zap.Int("partNo", params.PartNo),
+			zap.Error(sendErr))
 		
 		if statusMsgId != 0 {
 			if delErr := tgc.DeleteStatusMessage(uploadCtx, apiClient, channelId, statusMsgId); delErr != nil {
 				logger.Warn("Failed to delete status message after error", zap.Error(delErr))
 			}
 		}
-		return nil, err
+		return nil, sendErr
 	}
 
-	logger.Info("Media sent to channel successfully")
-
 	// Process the response
-	updates, ok := res.(*tg.Updates)
+	updates, ok := res.(tg.Updates)
 	if !ok {
 		return nil, fmt.Errorf("unexpected response type: %T", res)
 	}
