@@ -277,15 +277,6 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 			logger.Warn("Failed to update final progress message", zap.Error(err))
 		}
 
-		// Delete status message after upload completes or fails
-		if statusMsgId != 0 {
-			if err := tgc.DeleteStatusMessage(ctx, uploadClient, channelId, statusMsgId); err != nil {
-				logger.Warn("Failed to delete status message", zap.Error(err))
-			} else {
-				logger.Info("Deleted status message")
-			}
-		}
-
 		logger.Info("File uploaded successfully, sending to channel")
 
 		document := message.UploadedDocument(upload).Filename(params.PartName).ForceFile(true)
@@ -361,6 +352,15 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 			}
 		default:
 			return ErrUploadFailed
+		}
+
+		// Delete status message after successful upload
+		if statusMsgId != 0 {
+			if err := tgc.DeleteStatusMessage(ctx, uploadClient, channelId, statusMsgId); err != nil {
+				logger.Warn("Failed to delete status message", zap.Error(err))
+			} else {
+				logger.Info("Deleted status message")
+			}
 		}
 
 		out = api.UploadPart{
