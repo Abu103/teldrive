@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/tg"
@@ -243,7 +244,7 @@ func CalculateChunkSize(start, end int64) int64 {
 func SendStatusMessage(ctx context.Context, client *tg.Client, channelId int64, message string) (int, error) {
 	channel, err := GetChannelById(ctx, client, channelId)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("failed to get channel: %w", err)
 	}
 
 	// Convert InputChannel to InputPeerChannel
@@ -252,13 +253,25 @@ func SendStatusMessage(ctx context.Context, client *tg.Client, channelId int64, 
 		AccessHash: channel.AccessHash,
 	}
 
-	result, err := client.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
-		Peer:     peer,
-		Message:  message,
-		RandomID: rand.Int63(),
-	})
-	if err != nil {
-		return 0, err
+	// Add retry logic for sending status message
+	var result tg.UpdatesClass
+	var sendErr error
+	for retries := 0; retries < 3; retries++ {
+		if retries > 0 {
+			time.Sleep(time.Duration(retries) * 2 * time.Second)
+		}
+
+		result, sendErr = client.MessagesSendMessage(ctx, &tg.MessagesSendMessageRequest{
+			Peer:     peer,
+			Message:  message,
+			RandomID: rand.Int63(),
+		})
+		if sendErr == nil {
+			break
+		}
+	}
+	if sendErr != nil {
+		return 0, fmt.Errorf("failed to send status message after retries: %w", sendErr)
 	}
 
 	// Extract message ID from the result
@@ -271,44 +284,62 @@ func SendStatusMessage(ctx context.Context, client *tg.Client, channelId int64, 
 		}
 	}
 
-	return 0, errors.New("could not get message ID")
+	return 0, errors.New("could not get message ID from response")
 }
 
 func DeleteStatusMessage(ctx context.Context, client *tg.Client, channelId int64, messageId int) error {
 	channel, err := GetChannelById(ctx, client, channelId)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get channel: %w", err)
 	}
 
-	messageDeleteRequest := tg.ChannelsDeleteMessagesRequest{
-		Channel: channel,
-		ID:      []int{messageId},
+	// Add retry logic for deleting status message
+	var deleteErr error
+	for retries := 0; retries < 3; retries++ {
+		if retries > 0 {
+			time.Sleep(time.Duration(retries) * 2 * time.Second)
+		}
+
+		_, deleteErr = client.ChannelsDeleteMessages(ctx, &tg.ChannelsDeleteMessagesRequest{
+			Channel: channel,
+			ID:      []int{messageId},
+		})
+		if deleteErr == nil {
+			return nil
+		}
 	}
-	_, err = client.ChannelsDeleteMessages(ctx, &messageDeleteRequest)
-	return err
+	return fmt.Errorf("failed to delete status message after retries: %w", deleteErr)
 }
 
 func UpdateStatusMessage(ctx context.Context, client *tg.Client, channelId int64, messageId int, newMessage string) error {
 	channel, err := GetChannelById(ctx, client, channelId)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to get channel: %w", err)
 	}
 
-	// Convert InputChannel to InputPeerChannel
-	peer := &tg.InputPeerChannel{
-		ChannelID:  channel.ChannelID,
-		AccessHash: channel.AccessHash,
-	}
+	// Add retry logic for updating status message
+	var updateErr error
+	for retries := 0; retries < 3; retries++ {
+		if retries > 0 {
+			time.Sleep(time.Duration(retries) * 2 * time.Second)
+		}
 
-	// Edit the message
-	_, err = client.MessagesEditMessage(ctx, &tg.MessagesEditMessageRequest{
-		Peer:      peer,
-		ID:        messageId,
-		Message:   newMessage,
-		Media:     &tg.InputMediaEmpty{},
-		ReplyMarkup: &tg.ReplyKeyboardHide{
-			Selective: false,
-		},
-	})
-	return err
+		_, updateErr = client.MessagesEditMessage(ctx, &tg.MessagesEditMessageRequest{
+			Peer: &tg.InputPeerChannel{
+				ChannelID:  channel.ChannelID,
+				AccessHash: channel.AccessHash,
+			},
+			ID:      messageId,
+			Message: newMessage,
+		})
+		if updateErr == nil {
+			return nil
+		}
+		
+		// If we get MESSAGE_NOT_MODIFIED, that's actually fine
+		if strings.Contains(updateErr.Error(), "MESSAGE_NOT_MODIFIED") {
+			return nil
+		}
+	}
+	return fmt.Errorf("failed to update status message after retries: %w", updateErr)
 }

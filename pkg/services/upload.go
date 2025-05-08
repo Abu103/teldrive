@@ -11,6 +11,7 @@ import (
 	"io"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -97,6 +98,44 @@ func (a *apiService) UploadsStats(ctx context.Context, params api.UploadsStatsPa
 
 	}
 	return stats, nil
+}
+
+// Create a progress tracker with better state management
+type progressTracker struct {
+	uploaded     int64
+	total        int64
+	lastProgress float64
+	lastUpdate   time.Time
+	minInterval  time.Duration
+	minChange    float64
+	mu           sync.Mutex
+}
+
+func newProgressTracker(total int64) *progressTracker {
+	return &progressTracker{
+		total:        total,
+		minInterval:  5 * time.Second,  // Minimum time between updates
+		minChange:    1.0,              // Minimum progress change percentage
+		lastUpdate:   time.Now(),
+	}
+}
+
+func (pt *progressTracker) update(bytes int64) (bool, float64) {
+	pt.mu.Lock()
+	defer pt.mu.Unlock()
+	
+	pt.uploaded = bytes
+	progress := float64(bytes) / float64(pt.total) * 100
+	
+	// Check if enough time has passed and progress has changed significantly
+	now := time.Now()
+	if now.Sub(pt.lastUpdate) >= pt.minInterval && 
+	   progress-pt.lastProgress >= pt.minChange {
+		pt.lastProgress = progress
+		pt.lastUpdate = now
+		return true, progress
+	}
+	return false, progress
 }
 
 func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadReqWithContentType, params api.UploadsUploadParams) (*api.UploadPart, error) {
@@ -219,64 +258,26 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 			logger.Info("File encrypted successfully")
 		}
 
-		// Get a dedicated client for this upload
-		uploadClient := uploadPool.Default(ctx)
-		if uploadClient == nil {
-			return fmt.Errorf("failed to get upload client")
-		}
-
-		// Use a fixed part size of 512KB (524288 bytes)
-		partSize := 524288 // 512KB
-
-		logger.Info("Creating uploader", 
-			zap.Int("threads", a.cnf.TG.Uploads.Threads),
-			zap.Int("partSize", partSize),
-			zap.Int64("fileSize", fileSize))
-
-		u := uploader.NewUploader(uploadClient).
-			WithThreads(a.cnf.TG.Uploads.Threads).
-			WithPartSize(partSize)
-
 		// Create a progress tracker
-		var uploaded int64
-		total := fileSize
-
-		// Create an independent context for this upload with a longer timeout
-		uploadCtx, uploadCancel := context.WithTimeout(context.Background(), 30*time.Minute)
-		defer uploadCancel()
-
+		tracker := newProgressTracker(fileSize)
+		
 		// Create a progress reader
 		pr := &progressReader{
 			reader:   fileStream,
 			progress: func(bytes int64) {
-				atomic.StoreInt64(&uploaded, bytes)
-			},
-		}
-
-		// Update progress periodically
-		go func() {
-			ticker := time.NewTicker(10 * time.Second)
-			defer ticker.Stop()
-
-			for {
-				select {
-				case <-uploadCtx.Done():
-					return
-				case <-ticker.C:
+				if shouldUpdate, progress := tracker.update(bytes); shouldUpdate {
 					if statusMsgId != 0 {
-						progress := float64(uploaded) / float64(total) * 100
 						progressMsg := fmt.Sprintf("⏳ Uploading part %d of %s... %.1f%%", 
 							params.PartNo, params.FileName, progress)
-						// Update existing message instead of sending new one
 						if err := tgc.UpdateStatusMessage(ctx, apiClient, channelId, statusMsgId, progressMsg); err != nil {
-							logger.Warn("Failed to update progress message", zap.Error(err))
-						} else {
-							logger.Debug("Updated progress", zap.Float64("progress", progress))
+							if !strings.Contains(err.Error(), "MESSAGE_NOT_MODIFIED") {
+								logger.Warn("Failed to update progress message", zap.Error(err))
+							}
 						}
 					}
 				}
-			}
-		}()
+			},
+		}
 
 		logger.Info("Starting file upload")
 		
@@ -300,11 +301,44 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 				}
 			}
 
-			upload, uploadErr = u.Upload(uploadCtx, uploader.NewUpload(params.PartName, pr, fileSize))
+			// Get a dedicated client for this upload with reconnection
+			var uploadClient *telegram.Client
+			for retries := 0; retries < 3; retries++ {
+				uploadClient = uploadPool.Default(ctx)
+				if uploadClient != nil {
+					break
+				}
+				logger.Warn("Failed to get upload client, retrying...", zap.Int("retry", retries))
+				time.Sleep(time.Duration(retries+1) * 2 * time.Second)
+			}
+			if uploadClient == nil {
+				return fmt.Errorf("failed to get upload client after retries")
+			}
+
+			// Use a fixed part size of 512KB (524288 bytes)
+			partSize := 524288 // 512KB
+
+			logger.Info("Creating uploader", 
+				zap.Int("threads", a.cnf.TG.Uploads.Threads),
+				zap.Int("partSize", partSize),
+				zap.Int64("fileSize", fileSize))
+
+			u := uploader.NewUploader(uploadClient).
+				WithThreads(a.cnf.TG.Uploads.Threads).
+				WithPartSize(partSize)
+
+			upload, uploadErr = u.Upload(ctx, uploader.NewUpload(params.PartName, pr, fileSize))
 			if uploadErr == nil {
 				break
 			}
 
+			if strings.Contains(uploadErr.Error(), "engine was closed") ||
+			   strings.Contains(uploadErr.Error(), "connection dead") {
+				logger.Warn("Connection issue detected, attempting to reconnect...")
+				// Wait before retry
+				time.Sleep(5 * time.Second)
+				continue
+			}
 			logger.Error("Upload attempt failed", 
 				zap.String("fileName", params.FileName),
 				zap.String("partName", params.PartName),
@@ -335,7 +369,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 
 		// Update progress after upload completes
 		uploaded = fileSize
-		progress := float64(uploaded) / float64(total) * 100
+		progress := float64(uploaded) / float64(fileSize) * 100
 		progressMsg := fmt.Sprintf("⏳ Uploading part %d of %s... %.1f%%", 
 			params.PartNo, params.FileName, progress)
 		if err := tgc.UpdateStatusMessage(ctx, apiClient, channelId, statusMsgId, progressMsg); err != nil {
