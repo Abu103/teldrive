@@ -251,7 +251,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		}
 	}
 
-	// Create a progress tracker with more frequent updates and better error handling
+	// Create a progress tracker with more frequent updates
 	tracker := &progressTracker{
 		total:        fileSize,
 		minInterval:  2 * time.Second,  // Update every 2 seconds
@@ -279,91 +279,33 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		},
 	}
 
-	// Add retry logic for the upload with better error handling
-	var upload tg.InputFileClass
-	var uploadErr error
-	maxRetries := 3
-	for retry := 0; retry < maxRetries; retry++ {
-		if retry > 0 {
-			logger.Info("Retrying upload", 
-				zap.String("fileName", params.FileName),
-				zap.String("partName", params.PartName),
-				zap.Int("partNo", params.PartNo),
-				zap.Int("retry", retry))
-			
-			// Reset the progress reader for retry
-			pr = &progressReader{
-				reader:   fileStream,
-				progress: func(bytes int64) {
-					atomic.StoreInt64(&uploaded, bytes)
-				},
-			}
-		}
+	// Use a smaller part size for better reliability
+	partSize := 131072 // 128KB
 
-		// Get a dedicated client for this upload with reconnection
-		var uploadClient *tg.Client
-		for retries := 0; retries < 3; retries++ {
-			uploadClient = uploadPool.Default(uploadCtx)
-			if uploadClient != nil {
-				break
-			}
-			logger.Warn("Failed to get upload client, retrying...", zap.Int("retry", retries))
-			time.Sleep(time.Duration(retries+1) * 2 * time.Second)
-		}
-		if uploadClient == nil {
-			return nil, fmt.Errorf("failed to get upload client after retries")
-		}
+	logger.Info("Starting upload with client", 
+		zap.String("bot", channelUser),
+		zap.Int("botNo", index),
+		zap.Int("threads", a.cnf.TG.Uploads.Threads),
+		zap.Int("partSize", partSize))
 
-		// Use a smaller part size for better reliability
-		partSize := 131072 // 128KB
+	u := uploader.NewUploader(apiClient).
+		WithThreads(a.cnf.TG.Uploads.Threads).
+		WithPartSize(partSize)
 
-		logger.Info("Starting upload with client", 
-			zap.String("bot", channelUser),
-			zap.Int("botNo", index),
-			zap.Int("threads", a.cnf.TG.Uploads.Threads),
-			zap.Int("partSize", partSize))
-
-		u := uploader.NewUploader(uploadClient).
-			WithThreads(a.cnf.TG.Uploads.Threads).
-			WithPartSize(partSize)
-
-		upload, uploadErr = u.Upload(uploadCtx, uploader.NewUpload(params.PartName, pr, fileSize))
-		if uploadErr == nil {
-			break
-		}
-
-		if strings.Contains(uploadErr.Error(), "engine was closed") ||
-		   strings.Contains(uploadErr.Error(), "connection dead") {
-			logger.Warn("Connection issue detected, attempting to reconnect...")
-			time.Sleep(5 * time.Second)
-			continue
-		}
-
-		logger.Error("Upload attempt failed", 
+	upload, err := u.Upload(uploadCtx, uploader.NewUpload(params.PartName, pr, fileSize))
+	if err != nil {
+		logger.Error("Upload failed", 
 			zap.String("fileName", params.FileName),
 			zap.String("partName", params.PartName),
 			zap.Int("partNo", params.PartNo),
-			zap.Int("retry", retry),
-			zap.Error(uploadErr))
-
-		if retry < maxRetries-1 {
-			time.Sleep(time.Duration(retry+1) * 5 * time.Second)
-		}
-	}
-
-	if uploadErr != nil {
-		logger.Error("All upload attempts failed", 
-			zap.String("fileName", params.FileName),
-			zap.String("partName", params.PartName),
-			zap.Int("partNo", params.PartNo),
-			zap.Error(uploadErr))
+			zap.Error(err))
 		
 		if statusMsgId != 0 {
 			if delErr := tgc.DeleteStatusMessage(uploadCtx, apiClient, channelId, statusMsgId); delErr != nil {
 				logger.Warn("Failed to delete status message after error", zap.Error(delErr))
 			}
 		}
-		return nil, uploadErr
+		return nil, err
 	}
 
 	// Update final progress
@@ -377,7 +319,7 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 
 	logger.Info("File uploaded successfully, sending to channel")
 
-	// Send to channel with retry logic
+	// Send to channel
 	document := message.UploadedDocument(upload).Filename(params.PartName).ForceFile(true)
 	sender := message.NewSender(apiClient)
 	target := sender.To(&tg.InputPeerChannel{
@@ -385,47 +327,20 @@ func (a *apiService) UploadsUpload(ctx context.Context, req *api.UploadsUploadRe
 		AccessHash: channel.AccessHash,
 	})
 
-	var res tg.UpdatesClass
-	var sendErr error
-	for retry := 0; retry < maxRetries; retry++ {
-		if retry > 0 {
-			logger.Info("Retrying send to channel", 
-				zap.String("fileName", params.FileName),
-				zap.String("partName", params.PartName),
-				zap.Int("partNo", params.PartNo),
-				zap.Int("retry", retry))
-		}
-
-		res, sendErr = target.Media(uploadCtx, document)
-		if sendErr == nil {
-			break
-		}
-
-		logger.Error("Send to channel attempt failed", 
+	res, err := target.Media(uploadCtx, document)
+	if err != nil {
+		logger.Error("Failed to send to channel", 
 			zap.String("fileName", params.FileName),
 			zap.String("partName", params.PartName),
 			zap.Int("partNo", params.PartNo),
-			zap.Int("retry", retry),
-			zap.Error(sendErr))
-
-		if retry < maxRetries-1 {
-			time.Sleep(time.Duration(retry+1) * 5 * time.Second)
-		}
-	}
-
-	if sendErr != nil {
-		logger.Error("All send to channel attempts failed", 
-			zap.String("fileName", params.FileName),
-			zap.String("partName", params.PartName),
-			zap.Int("partNo", params.PartNo),
-			zap.Error(sendErr))
+			zap.Error(err))
 		
 		if statusMsgId != 0 {
 			if delErr := tgc.DeleteStatusMessage(uploadCtx, apiClient, channelId, statusMsgId); delErr != nil {
 				logger.Warn("Failed to delete status message after error", zap.Error(delErr))
 			}
 		}
-		return nil, sendErr
+		return nil, err
 	}
 
 	logger.Info("Media sent to channel successfully")
