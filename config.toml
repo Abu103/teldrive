@@ -21,9 +21,9 @@ secret = "3d83b297fefe647451cfaf07503e1ef4"
 session-time = "720h" 
 
 [tg]
-pool-size = 16
-rate = 200
-rate-burst = 10
+pool-size = 8
+rate = 100
+rate-burst = 5
 ntp = true
 disable-stream-bots = false
 storage-file = ''
@@ -32,15 +32,15 @@ rate-limit = true
 reconnect-timeout = '5m'
 
 [tg.stream]
-buffers = 16
-chunk-timeout = '30s'
+buffers = 8
+chunk-timeout = '20s'
 
 [tg.uploads]
-multi-threads = 4
+multi-threads = 2
 encryption-key = ''
 max-retries = 10
 retention = '7d'
-threads = '16'
+threads = '8'
 
 [log]
 level = "info"
