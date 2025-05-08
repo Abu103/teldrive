@@ -35,6 +35,21 @@ var (
 	ErrUploadFailed = errors.New("upload failed")
 )
 
+type progressReader struct {
+	reader   io.Reader
+	progress func(int64)
+	read     int64
+}
+
+func (r *progressReader) Read(p []byte) (n int, err error) {
+	n, err = r.reader.Read(p)
+	if n > 0 && r.progress != nil {
+		r.read += int64(n)
+		r.progress(r.read)
+	}
+	return
+}
+
 func (a *apiService) UploadsDelete(ctx context.Context, params api.UploadsDeleteParams) error {
 	if err := a.db.Where("upload_id = ?", params.ID).Delete(&models.Upload{}).Error; err != nil {
 		return &api.ErrorStatusCode{StatusCode: 500, Response: api.Error{Message: err.Error(), Code: 500}}
@@ -499,19 +514,4 @@ func generateRandomSalt() (string, error) {
 	hashedSalt := base64.URLEncoding.EncodeToString(hasher.Sum(nil))
 
 	return hashedSalt, nil
-}
-
-type progressReader struct {
-	reader   io.Reader
-	progress func(int64)
-	read     int64
-}
-
-func (r *progressReader) Read(p []byte) (n int, err error) {
-	n, err = r.reader.Read(p)
-	if n > 0 && r.progress != nil {
-		r.read += int64(n)
-		r.progress(r.read)
-	}
-	return
 }
