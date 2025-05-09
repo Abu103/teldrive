@@ -69,8 +69,8 @@ func UpdateStatusMessage(ctx context.Context, client *tg.Client, channelID int64
 	return fmt.Errorf("failed to update status message after retries")
 }
 
-// DeleteStatusMessage deletes a status message with retries
-func DeleteStatusMessage(ctx context.Context, client *tg.Client, channelID int64, messageID int) error {
+// DeleteMessages deletes messages from a channel
+func DeleteMessages(ctx context.Context, client *tg.Client, channelID int64, messageIDs []int) error {
 	for i := 0; i < 3; i++ {
 		if i > 0 {
 			time.Sleep(time.Duration(i) * 2 * time.Second)
@@ -81,16 +81,88 @@ func DeleteStatusMessage(ctx context.Context, client *tg.Client, channelID int64
 			continue
 		}
 		
-		_, err = client.ChannelsDeleteMessages(ctx, &tg.ChannelsDeleteMessagesRequest{
-			Channel: channel,
-			ID:      []int{messageID},
+		_, err = client.MessagesDeleteMessages(ctx, &tg.MessagesDeleteMessagesRequest{
+			Revoke: true,
+			ID:     utils.IntTo32(messageIDs),
 		})
-		
 		if err == nil {
 			return nil
 		}
 	}
-	return fmt.Errorf("failed to delete status message after retries")
+	return fmt.Errorf("failed to delete messages after retries: %w", err)
+}
+
+// CalculateChunkSize calculates the optimal chunk size for file upload
+func CalculateChunkSize(fileSize int64) int64 {
+	const minChunkSize = 64 * 1024 // 64KB
+	const maxChunkSize = 512 * 1024 // 512KB
+	
+	chunkSize := fileSize / 100 // 1%
+	if chunkSize < minChunkSize {
+		chunkSize = minChunkSize
+	} else if chunkSize > maxChunkSize {
+		chunkSize = maxChunkSize
+	}
+	return chunkSize
+}
+
+// GetLocation gets the file location for a message
+func GetLocation(ctx context.Context, client *tg.Client, channelID int64, messageID int) (*tg.InputFileLocation, error) {
+	for i := 0; i < 3; i++ {
+		if i > 0 {
+			time.Sleep(time.Duration(i) * 2 * time.Second)
+		}
+		
+		channel, err := GetChannelById(ctx, client, channelID)
+		if err != nil {
+			continue
+		}
+		
+		result, err := client.MessagesGetMessages(ctx, &tg.MessagesGetMessagesRequest{
+			ID: []int32{int32(messageID)},
+		})
+		if err != nil {
+			continue
+		}
+		
+		if messages, ok := result.(*tg.MessagesMessages); ok {
+			if len(messages.Messages) > 0 {
+				if msg, ok := messages.Messages[0].(*tg.Message); ok {
+					if media, ok := msg.Media.(*tg.MessageMediaDocument); ok {
+						return &tg.InputFileLocation{
+							ID:        media.Document.ID,
+							AccessHash: media.Document.AccessHash,
+							FileReference: media.Document.FileReference,
+						}, nil
+					}
+				}
+			}
+		}
+	}
+	return nil, fmt.Errorf("failed to get file location after retries")
+}
+
+// GetChunk gets a specific chunk of a file
+func GetChunk(ctx context.Context, client *tg.Client, location *tg.InputFileLocation, offset int64, limit int64) ([]byte, error) {
+	for i := 0; i < 3; i++ {
+		if i > 0 {
+			time.Sleep(time.Duration(i) * 2 * time.Second)
+		}
+		
+		result, err := client.UploadGetFile(ctx, &tg.UploadGetFileRequest{
+			Location: location,
+			Offset:   offset,
+			Limit:    limit,
+		})
+		if err != nil {
+			continue
+		}
+		
+		if file, ok := result.(*tg.UploadFile); ok {
+			return file.Bytes, nil
+		}
+	}
+	return nil, fmt.Errorf("failed to get file chunk after retries")
 }
 
 // GetChannelById gets a channel by its ID
