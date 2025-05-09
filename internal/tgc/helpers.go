@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gotd/td/tg"
+	"github.com/Abu103/teldrive/internal/utils"
 )
 
 // SendStatusMessage sends a status message to a channel with retries
@@ -76,12 +77,7 @@ func DeleteMessages(ctx context.Context, client *tg.Client, channelID int64, mes
 			time.Sleep(time.Duration(i) * 2 * time.Second)
 		}
 		
-		channel, err := GetChannelById(ctx, client, channelID)
-		if err != nil {
-			continue
-		}
-		
-		_, err = client.MessagesDeleteMessages(ctx, &tg.MessagesDeleteMessagesRequest{
+		_, err := client.MessagesDeleteMessages(ctx, &tg.MessagesDeleteMessagesRequest{
 			Revoke: true,
 			ID:     utils.IntTo32(messageIDs),
 		})
@@ -89,7 +85,7 @@ func DeleteMessages(ctx context.Context, client *tg.Client, channelID int64, mes
 			return nil
 		}
 	}
-	return fmt.Errorf("failed to delete messages after retries: %w", err)
+	return fmt.Errorf("failed to delete messages after retries")
 }
 
 // CalculateChunkSize calculates the optimal chunk size for file upload
@@ -113,13 +109,10 @@ func GetLocation(ctx context.Context, client *tg.Client, channelID int64, messag
 			time.Sleep(time.Duration(i) * 2 * time.Second)
 		}
 		
-		channel, err := GetChannelById(ctx, client, channelID)
-		if err != nil {
-			continue
-		}
-		
-		result, err := client.MessagesGetMessages(ctx, &tg.MessagesGetMessagesRequest{
-			ID: []int32{int32(messageID)},
+		result, err := client.MessagesGetMessages(ctx, []tg.InputMessageClass{
+			&tg.InputMessageID{
+				ID: int32(messageID),
+			},
 		})
 		if err != nil {
 			continue
@@ -129,10 +122,11 @@ func GetLocation(ctx context.Context, client *tg.Client, channelID int64, messag
 			if len(messages.Messages) > 0 {
 				if msg, ok := messages.Messages[0].(*tg.Message); ok {
 					if media, ok := msg.Media.(*tg.MessageMediaDocument); ok {
+						document := media.Document.(*tg.Document)
 						return &tg.InputFileLocation{
-							ID:        media.Document.ID,
-							AccessHash: media.Document.AccessHash,
-							FileReference: media.Document.FileReference,
+							ID:        document.ID,
+							AccessHash: document.AccessHash,
+							FileReference: document.FileReference,
 						}, nil
 					}
 				}
