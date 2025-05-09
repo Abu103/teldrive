@@ -79,7 +79,7 @@ func DeleteMessages(ctx context.Context, client *tg.Client, channelID int64, mes
 		
 		_, err := client.MessagesDeleteMessages(ctx, &tg.MessagesDeleteMessagesRequest{
 			Revoke: true,
-			ID:     utils.IntTo32(messageIDs),
+			ID:     messageIDs,
 		})
 		if err == nil {
 			return nil
@@ -145,8 +145,8 @@ func GetChunk(ctx context.Context, client *tg.Client, location *tg.InputFileLoca
 		
 		result, err := client.UploadGetFile(ctx, &tg.UploadGetFileRequest{
 			Location: location,
-			Offset:   offset,
-			Limit:    limit,
+			Offset:   int(offset),
+			Limit:    int(limit),
 		})
 		if err != nil {
 			continue
