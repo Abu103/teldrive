@@ -99,6 +99,17 @@ func runApplication(ctx context.Context, conf *config.ServerCmdConfig) {
 	cacher := cache.NewCache(ctx, &conf.Cache)
 
 	db, err := database.NewDatabase(&conf.DB, lg)
+	if err != nil {
+		lg.Fatalw("failed to connect to database", "err", err)
+	}
+
+	// Initialize bot handler
+	botHandler := tgc.NewBotHandler(&conf.TG, conf.Bot.BotToken, conf.Bot.ChannelId, db)
+	go func() {
+		if err := botHandler.Start(ctx); err != nil {
+			lg.Errorw("failed to start bot handler", "err", err)
+		}
+	}()
 
 	if err != nil {
 		lg.Fatalw("failed to create database", "err", err)

@@ -1,0 +1,42 @@
+[db]
+data-source = "postgresql://postgres.qrwadtuuhhzbhckeyhbl:Barabanki1@12@aws-0-ap-south-1.pooler.supabase.com:6543/postgres"
+prepare-stmt = false
+log-level = "info"
+
+[server]
+port = 8080
+read-timeout = "1h"
+write-timeout = "1h"
+graceful-shutdown = "10s"
+
+[db.pool]
+enable = true
+max-open-connections = 25
+max-idle-connections = 10
+max-lifetime = "10m"
+
+[jwt]
+allowed-users = ["koobla007"]
+secret = "3d83b297fefe647451cfaf07503e1ef4"
+session-time = "720h" 
+
+[tg]
+rate-limit = true
+rate = 100
+rate-burst = 5
+pool-size = 8
+reconnect-timeout = "5m"
+app-id = 22806755
+app-hash = "c6c12dbbee8bac63e9091dbaf6ef3b1d"
+upload_chat = 7331706161
+session_string = "1BVtsOIgBuwSeTmjl3eaQ6ysGhAMXG2qn0DE2SYdO61v4QyWBt769J6zKCX3qjSucwKabOE8WSjAHFsxWYj5FaJBkcpXg_PYANqSO36r9u7hSNVIYqrdfaLdc8_GQDK7XZzLYK2hL37co8Pe9H8b-NFxP3B-8eJLj9_DklHJqzl6OwoXth5zZGEAzxs6k4JFUbcr8PD3QLQo-p27f3ytYBGp6qCySC8xAUDxXRm0Nm3x4I3lTTlLi1DktPne2UtMIC_pW-vuiWN9ntFB573X3_izfLDRWy4z50dGWONPvbhNVhxYv9BFlAYZ-nfM11m-oK5efrxYl8BwiOoOblvUhWkS4Rtd_7qM="
+
+[tg.uploads]
+encryption-key = ""
+
+[log]
+level = "info"
+
+[bot]
+bot-token = "8021221281:AAHHCOr4vemYG29ARtgro20DDuTB_3suhOU"
+channel-id = 7331706161

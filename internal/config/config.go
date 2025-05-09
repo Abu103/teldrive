@@ -15,12 +15,18 @@ import (
 	"github.com/tgdrive/teldrive/internal/duration"
 )
 
+type BotConfig struct {
+	BotToken string `config:"bot-token" description:"Telegram bot token" required:"true"`
+	ChannelId int64 `config:"channel-id" description:"Telegram channel ID to monitor" required:"true"`
+}
+
 type ServerCmdConfig struct {
 	Server   ServerConfig  `config:"server"`
 	Log      LoggingConfig `config:"log"`
 	JWT      JWTConfig     `config:"jwt"`
 	DB       DBConfig      `config:"db"`
 	TG       TGConfig      `config:"tg"`
+	Bot      BotConfig     `config:"bot"`
 	CronJobs CronJobConfig `config:"cronjobs"`
 	Cache    CacheConfig   `config:"cache"`
 }
