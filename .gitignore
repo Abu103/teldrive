@@ -35,3 +35,7 @@ docs/dist
 teldrive-ui.zip
 internal/api
 .aider*
+config.toml
+*.log
+teldrive_bot_log.txt
+teldrive_standalone_bot.log

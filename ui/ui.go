@@ -6,3 +6,4 @@ import (
 
 //go:embed all:dist
 var StaticFS embed.FS
+

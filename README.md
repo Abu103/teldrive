@@ -1,6 +1,6 @@
-# Teldrive
+# TelDrive with Integrated Telegram Bot
 
-Teldrive is a powerful utility that enables you to organise your telegram files and much more.
+This enhanced fork of TelDrive includes a fully integrated Telegram bot that automatically uploads files from your Telegram channel directly to your TelDrive storage with proper folder organization. TelDrive is a powerful utility that enables you to organize your Telegram files and much more.
 
 ## Advantages Over Alternative Solutions
 
@@ -12,6 +12,50 @@ Teldrive is a powerful utility that enables you to organise your telegram files 
 > Teldrive functions as a wrapper over your Telegram account, simplifying file access. However, users must adhere to the limitations imposed by the Telegram API. Teldrive is not responsible for any consequences arising from non-compliance with these API limits.You will be banned instantly if you misuse telegram API.
 
 Visit https://teldrive-docs.pages.dev for setting up teldrive.
+
+## Integrated Telegram Bot Features
+
+This enhanced fork adds several powerful features to TelDrive:
+
+### 1. Single Command Operation
+
+Run both TelDrive and the Telegram bot with a single command:
+```
+./teldrive run
+```
+No need to run separate processes for the web interface and the bot.
+
+### 2. Automatic File Organization
+
+Files uploaded to your Telegram channel are automatically added to your specified parent folder in TelDrive. Configure the parent folder ID in the `config.toml` file.
+
+### 3. Channel ID Handling
+
+The bot correctly handles Telegram's channel ID format with the -100 prefix, ensuring proper message processing from public and private channels.
+
+### 4. Duplicate File Handling
+
+The bot automatically handles duplicate filenames by appending timestamps and random UUIDs, preventing database constraint violations.
+
+### 5. File Categorization Tools
+
+This fork includes additional utilities for file management:
+
+- **autocategorize**: Organizes files into directories based on file types
+- **fixcat**: Moves files to a specified parent folder
+- **filerescue**: Helps recover and relocate files if they're moved to the wrong location
+
+### Configuration
+
+Edit the `config.toml` file to customize the bot behavior:
+
+```toml
+[bot]
+bot-token = "YOUR_BOT_TOKEN"
+channel-id = YOUR_CHANNEL_ID
+parent-id = "YOUR_PARENT_FOLDER_ID"
+enabled = true
+```
 
 # Recognitions
 

@@ -18,6 +18,8 @@ import (
 type BotConfig struct {
 	BotToken string `config:"bot-token" description:"Telegram bot token" required:"true"`
 	ChannelId int64 `config:"channel-id" description:"Telegram channel ID to monitor" required:"true"`
+	ParentId string `config:"parent-id" description:"Parent directory ID for uploaded files"`
+	Enabled bool `config:"enabled" description:"Enable the integrated Telegram bot" default:"true"`
 }
 
 type ServerCmdConfig struct {

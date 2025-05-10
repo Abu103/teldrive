@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"os"
 	"regexp"
 	"time"
 
@@ -103,13 +104,57 @@ func runApplication(ctx context.Context, conf *config.ServerCmdConfig) {
 		lg.Fatalw("failed to connect to database", "err", err)
 	}
 
-	// Initialize bot handler
+	// Initialize bot handlers
+	// 1. Standard bot handler for the web interface
 	botHandler := tgc.NewBotHandler(&conf.TG, conf.Bot.BotToken, conf.Bot.ChannelId, db)
 	go func() {
 		if err := botHandler.Start(ctx); err != nil {
 			lg.Errorw("failed to start bot handler", "err", err)
 		}
 	}()
+	
+	// 2. Integrated bot for file uploads with parent ID support
+	if conf.Bot.Enabled {
+		// Log the actual channel ID format for debugging
+		actualChannelID := conf.Bot.ChannelId
+		if conf.Bot.ChannelId > 0 {
+			// For positive channel IDs, we need to add -100 prefix for the bot
+			actualChannelID = -1000000000000 - conf.Bot.ChannelId
+			lg.Infow("Converting positive channel ID to bot format", 
+				"original_id", conf.Bot.ChannelId,
+				"converted_id", actualChannelID)
+		}
+		
+		lg.Infow("Starting integrated Telegram bot", 
+			"channel_id", actualChannelID,
+			"parent_id", conf.Bot.ParentId,
+			"bot_token_prefix", conf.Bot.BotToken[:10] + "...")
+		
+		// Create a log file for the integrated bot
+		f, _ := os.OpenFile("integrated_bot.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if f != nil {
+			defer f.Close()
+			f.WriteString(fmt.Sprintf("[%s] STARTING INTEGRATED BOT with channel ID: %d, parent ID: %s\n", 
+				time.Now().Format(time.RFC3339), actualChannelID, conf.Bot.ParentId))
+		}
+		
+		integratedBot := tgc.NewIntegratedBotHandler(&conf.TG, conf.Bot.BotToken, actualChannelID, conf.Bot.ParentId, db)
+		go func() {
+			if err := integratedBot.Start(ctx); err != nil {
+				lg.Errorw("failed to start integrated bot", "err", err)
+				
+				// Log error to file
+				f, _ := os.OpenFile("integrated_bot.log", os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+				if f != nil {
+					defer f.Close()
+					f.WriteString(fmt.Sprintf("[%s] ERROR STARTING INTEGRATED BOT: %v\n", 
+						time.Now().Format(time.RFC3339), err))
+				}
+			}
+		}()
+	} else {
+		lg.Info("Integrated Telegram bot is disabled")
+	}
 
 	if err != nil {
 		lg.Fatalw("failed to create database", "err", err)

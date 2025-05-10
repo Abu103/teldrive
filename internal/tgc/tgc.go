@@ -79,10 +79,21 @@ func newClient(ctx context.Context, config *config.TGConfig, handler telegram.Up
 }
 
 func NoAuthClient(ctx context.Context, config *config.TGConfig, handler telegram.UpdateHandler, storage session.Storage) (*telegram.Client, error) {
+	logging.DefaultLogger().Sugar().Infow("Creating NoAuthClient", 
+		"app_id", config.AppId, 
+		"app_hash_length", len(config.AppHash))
+
+	if storage == nil {
+		storage = new(session.StorageMemory)
+		logging.DefaultLogger().Sugar().Info("Using memory storage")
+	}
+
 	middlewares := []telegram.Middleware{
 		floodwait.NewSimpleWaiter(),
 	}
 	middlewares = append(middlewares, ratelimit.New(rate.Every(time.Millisecond*100), 5))
+
+	logging.DefaultLogger().Sugar().Info("Creating client with newClient")
 	return newClient(ctx, config, handler, storage, middlewares...)
 }
 
@@ -105,11 +116,24 @@ func AuthClient(ctx context.Context, config *config.TGConfig, sessionStr string,
 }
 
 func BotClient(ctx context.Context, db *gorm.DB, config *config.TGConfig, token string, middlewares ...telegram.Middleware) (*telegram.Client, error) {
+	logging.DefaultLogger().Sugar().Infow("Creating BotClient", 
+		"app_id", config.AppId, 
+		"token_length", len(token))
 
-	storage := tgstorage.NewSessionStorage(db, cache.Key("sessions", strings.Split(token, ":")[0]))
+	// Extract bot ID from token for session key
+	botID := strings.Split(token, ":")[0]
+	logging.DefaultLogger().Sugar().Infow("Using bot ID for session", "bot_id", botID)
 
+	// Create session storage
+	storage := tgstorage.NewSessionStorage(db, cache.Key("sessions", botID))
+	logging.DefaultLogger().Sugar().Info("Created session storage")
+
+	// Always add flood wait middleware to be safe
+	logging.DefaultLogger().Sugar().Info("Adding flood wait middleware")
+	middlewares = append(middlewares, floodwait.NewSimpleWaiter())
+
+	logging.DefaultLogger().Sugar().Info("Creating client with newClient")
 	return newClient(ctx, config, nil, storage, middlewares...)
-
 }
 
 type middlewareOption func(*middlewareConfig)
